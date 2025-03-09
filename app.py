@@ -139,8 +139,8 @@ def update_graph(pathway_filter):
                 name=node_type))
     
     fig.update_layout(
-        width=1000,
-        height=800,
+        width=1200,
+        height=1000,
         showlegend=True,
         title=f"{tang_name} Network Graph",
         xaxis=dict(showgrid=False, zeroline=False, visible=False),
