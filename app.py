@@ -77,9 +77,6 @@ def update_graph(pathway_filter, selected_node):
     filtered_G = G.copy()
     if selected_node:
         nodes_to_keep = set([selected_node]) | set(G.neighbors(selected_node))
-        print(nodes_to_keep)
-        for neighbor in list(G.neighbors(selected_node)):
-            nodes_to_keep.update(G.neighbors(neighbor))
         filtered_G = G.subgraph(nodes_to_keep)
     elif pathway_filter != "All":
         nodes_to_keep = {n for n, d in G.nodes(data=True) if d['type'] in ['prescription', 'herb']}
@@ -134,9 +131,6 @@ def update_graph(pathway_filter, selected_node):
         title=f"{tang_name} Network Graph",
         xaxis=dict(showgrid=False, zeroline=False, visible=False),
         yaxis=dict(showgrid=False, zeroline=False, visible=False))
-    
-    fig.update_traces(marker=dict(symbol='circle'), selector=dict(mode='markers+text'))
-    fig.update_layout(clickmode='event+select')
     
     return fig
 
