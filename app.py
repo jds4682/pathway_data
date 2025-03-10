@@ -1,86 +1,113 @@
 import streamlit as st
 import networkx as nx
 import pandas as pd
+import os
 import plotly.graph_objects as go
 import requests
 from io import BytesIO
 
-# 데이터 불러오기 (Excel 파일에서 Pathway 정보)
 url = "https://github.com/jds4682/pathway_data/raw/db346c9671fd44fc808ffe11cbc3b2bc788513d9/Saengmaek-san_pathway_scores.xlsx"
 response = requests.get(url)
+
 if response.status_code == 200:
     df_pathway = pd.read_excel(BytesIO(response.content))
 else:
-    st.error("Pathway 데이터를 불러올 수 없습니다.")
-    df_pathway = pd.DataFrame()
+    st.error("파일을 다운로드할 수 없습니다.")
 
-# 네트워크 그래프 생성
-G = nx.Graph()
 T6 = ["Saengmaek-san", "SMHB00336", "SMHB00041"]
 T6_weights = {"SMHB00336": 3.75, "SMHB00041": 3.75}
 
-tang_name = T6[0]
-G.add_node(tang_name, type='prescription', color='red', size=12)
-
 data_list = []
+tang_name = T6[0]
+st.write(tang_name)
+
+G = nx.Graph()
+G.add_node(tang_name, type='prescription', color='red', layer=0, size=12)
+
 for herb in T6[1:]:
-    G.add_node(herb, type='herb', color='orange', size=8)
+    G.add_node(herb, type='herb', color='orange', layer=1, size=8)
     G.add_edge(tang_name, herb, weight=1.5)
     
-    # 유전자 데이터 불러오기
     url_path = f"https://github.com/jds4682/pathway_data/raw/refs/heads/main/{herb}.csv"
     response = requests.get(url_path)
+    
     if response.status_code == 200:
         df = pd.read_csv(BytesIO(response.content), encoding='ISO-8859-1')
-        df = df[pd.to_numeric(df['P_value'], errors='coerce').notna()]
-        df = df[pd.to_numeric(df['Value'], errors='coerce').notna()]
-        filtered_df = df[(df['P_value'].astype(float) < 0.01) & (df['Value'].astype(float) > 1)]
-        for _, row in filtered_df.iterrows():
-            gene = row['Gene symbol']
-            value = float(row['Value']) * T6_weights.get(herb, 1)
-            G.add_node(gene, type='gene', color='green', size=max(15, min(value * 0.5, 3)))
-            G.add_edge(herb, gene, weight=value)
+    else:
+        continue
+    
+    df = df[pd.to_numeric(df['P_value'], errors='coerce').notna()]
+    df = df[pd.to_numeric(df['Value'], errors='coerce').notna()]
+    
+    filtered_df = df[(df['P_value'].astype(float) < 0.01) & (df['Value'].astype(float) > 1)]
+    
+    for _, row in filtered_df.iterrows():
+        gene = row['Gene symbol']
+        value = float(row['Value'])
+        score = value * T6_weights.get(herb, 1)
+        G.add_node(gene, type='gene', size=max(15, min(score * 0.5, 3)), color='green', layer=2)
+        G.add_edge(herb, gene, weight=score)
 
-# Pathway 데이터 추가
-for _, row in df_pathway.iterrows():
-    gene, pathway, score, total_score = row['Gene'], row['Pathway'], row['Score'], row['Total Score']
-    G.add_node(pathway, type='pathway', color='purple', size=max(15, min(total_score * 0.5, 3)))
-    G.add_edge(gene, pathway, weight=score)
+pathway_options = ["All"] + list(df_pathway['Pathway'].unique())
+pathway_filter = st.selectbox("Select a Pathway", pathway_options, index=0)
 
-# Streamlit UI
-title = st.title("Interactive Network Graph")
-selected_node = st.selectbox("노드 선택", options=list(G.nodes), index=0)
+selected_node = st.session_state.get("selected_node", None)
 
-# 선택한 노드와 연결된 노드만 표시하는 기능
-def filter_graph(selected_node):
-    nodes_to_keep = {selected_node}
-    for u, v in G.edges(selected_node):
-        nodes_to_keep.add(v)
-    return G.subgraph(nodes_to_keep)
-
-# 그래프 업데이트
-filtered_G = filter_graph(selected_node)
-def draw_graph(G):
-    pos = nx.spring_layout(G)
-    node_trace = go.Scatter(
-        x=[pos[n][0] for n in G.nodes()],
-        y=[pos[n][1] for n in G.nodes()],
-        text=list(G.nodes()),
-        mode='markers+text',
-        marker=dict(size=[G.nodes[n].get('size', 10) for n in G.nodes()],
-                    color=[G.nodes[n]['color'] for n in G.nodes()], opacity=0.8),
-        textposition='top center'
-    )
-    edge_trace = go.Scatter(
-        x=sum([[pos[u][0], pos[v][0], None] for u, v in G.edges()], []),
-        y=sum([[pos[u][1], pos[v][1], None] for u, v in G.edges()], []),
+def update_graph(pathway_filter, selected_node):
+    filtered_G = G.copy()
+    if selected_node:
+        nodes_to_keep = {selected_node} | {neighbor for neighbor in G.neighbors(selected_node)}
+        filtered_G = G.subgraph(nodes_to_keep)
+    elif pathway_filter != "All":
+        nodes_to_keep = {n for n, d in G.nodes(data=True) if d['type'] in ['prescription', 'herb']}
+        for edge in G.edges():
+            if edge[1] == pathway_filter or edge[0] == pathway_filter:
+                nodes_to_keep.add(edge[0])
+                nodes_to_keep.add(edge[1])
+        filtered_G = G.subgraph(nodes_to_keep)
+    
+    pos = nx.spring_layout(G, seed=42)
+    nodes = list(filtered_G.nodes())
+    node_colors = [filtered_G.nodes[n]['color'] for n in nodes]
+    node_sizes = [filtered_G.nodes[n].get('size', 300) for n in nodes]
+    edges = list(filtered_G.edges())
+    edge_x, edge_y = [], []
+    for edge in edges:
+        x0, y0 = pos[edge[0]]
+        x1, y1 = pos[edge[1]]
+        edge_x.extend([x0, x1, None])
+        edge_y.extend([y0, y1, None])
+    
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=edge_x, y=edge_y,
         line=dict(width=1, color='gray'),
-        mode='lines'
-    )
-    fig = go.Figure(data=[edge_trace, node_trace])
-    fig.update_layout(showlegend=False, title="Filtered Network Graph",
-                      xaxis=dict(showgrid=False, zeroline=False, visible=False),
-                      yaxis=dict(showgrid=False, zeroline=False, visible=False))
+        hoverinfo='none',
+        mode='lines'))
+    
+    fig.add_trace(go.Scatter(
+        x=[pos[n][0] for n in nodes],
+        y=[pos[n][1] for n in nodes],
+        mode='markers+text',
+        text=nodes,
+        marker=dict(size=node_sizes, color=node_colors, opacity=0.8),
+        textposition='top center',
+        customdata=nodes,
+        hoverinfo='text'))
+    
+    fig.update_layout(
+        width=1200,
+        height=1000,
+        showlegend=False,
+        title=f"{tang_name} Network Graph",
+        xaxis=dict(showgrid=False, zeroline=False, visible=False),
+        yaxis=dict(showgrid=False, zeroline=False, visible=False),
+        clickmode='event+select')
+    
     return fig
 
-st.plotly_chart(draw_graph(filtered_G))
+fig = update_graph(pathway_filter, selected_node)
+st.plotly_chart(fig)
+
+if st.session_state.get("selected_node", None):
+    st.write(f"현재 선택된 노드: {st.session_state.selected_node}")
