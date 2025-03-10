@@ -11,7 +11,6 @@ from io import BytesIO
 url = "https://github.com/jds4682/pathway_data/raw/db346c9671fd44fc808ffe11cbc3b2bc788513d9/Saengmaek-san_pathway_scores.xlsx"
 response = requests.get(url)
 
-# 파일 내용 읽기
 if response.status_code == 200:
     df_pathway = pd.read_excel(BytesIO(response.content))
 else:
@@ -28,7 +27,6 @@ data_list = []
 tang_name = T6[0]
 st.write(tang_name)
 
-# 네트워크 그래프 생성
 G = nx.Graph()
 G.add_node(tang_name, type='prescription', color='red', layer=0, size=12)
 
@@ -70,7 +68,9 @@ for _, row in df_pathway.iterrows():
     G.add_edge(gene, pathway, weight=score)
 
 pathway_options = ["All"] + list(df_pathway['Pathway'].unique())
-selected_node = st.session_state.get("selected_node", None)
+if 'selected_node' not in st.session_state:
+    st.session_state['selected_node'] = None
+
 pathway_filter = st.selectbox("Select a Pathway", pathway_options, index=0)
 
 def update_graph(pathway_filter, selected_node):
@@ -132,7 +132,14 @@ def update_graph(pathway_filter, selected_node):
         xaxis=dict(showgrid=False, zeroline=False, visible=False),
         yaxis=dict(showgrid=False, zeroline=False, visible=False))
     
+    fig.update_traces(marker=dict(symbol='circle'), selector=dict(mode='markers+text'))
+    fig.update_layout(clickmode='event+select')
+    
     return fig
 
-fig = update_graph(pathway_filter, selected_node)
-st.plotly_chart(fig)
+fig = update_graph(pathway_filter, st.session_state['selected_node'])
+st.plotly_chart(fig)  
+
+if st.button("Reset Selection"):
+    st.session_state['selected_node'] = None
+    st.rerun()
