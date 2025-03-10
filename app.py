@@ -81,7 +81,7 @@ if os.path.exists(pathway_file):
         score = row['Score']
         total_score = row['Total Score']
         
-        G.add_node(pathway, type='pathway', size=max(15, min(total_score * 0.8, 6)), color='black', layer=3)
+        G.add_node(pathway, type='pathway', size=max(15, min(total_score * 0.8, 6)), color='purple', layer=3)
         G.add_edge(gene, pathway, weight=score)
 
 pathway_options = ["All"] + list(df_pathway['Pathway'].unique())
@@ -126,7 +126,7 @@ def update_graph(pathway_filter):
         mode='lines',
         name='Edges'))
     
-    for node_type, color in [('prescription', 'red'), ('herb', 'orange'), ('gene', 'green'), ('pathway', 'black')]:
+    for node_type, color in [('prescription', 'red'), ('herb', 'orange'), ('gene', 'green'), ('pathway', 'purple')]:
         filtered_nodes = [n for n in nodes if filtered_G.nodes[n]['color'] == color]
         if filtered_nodes:
             fig.add_trace(go.Scatter(
