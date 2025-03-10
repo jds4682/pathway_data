@@ -90,17 +90,12 @@ def update_graph(pathway_filter, selected_node):
     for node, data in filtered_G.nodes(data=True):
         layers[data['type']].append(node)
     
-    shell_positions = nx.shell_layout(filtered_G, 
-        [layers['prescription'], layers['herb'], layers['gene'], layers['pathway']])
+    pos = nx.spring_layout(filtered_G)
     
-    nodes = list(filtered_G.nodes())
-    node_colors = [filtered_G.nodes[n]['color'] for n in nodes]
-    node_sizes = [filtered_G.nodes[n].get('size', 300) for n in nodes]
-    edges = list(filtered_G.edges())
     edge_x, edge_y = [], []
-    for edge in edges:
-        x0, y0 = shell_positions[edge[0]]
-        x1, y1 = shell_positions[edge[1]]
+    for edge in filtered_G.edges():
+        x0, y0 = pos[edge[0]]
+        x1, y1 = pos[edge[1]]
         edge_x.extend([x0, x1, None])
         edge_y.extend([y0, y1, None])
     
@@ -113,11 +108,11 @@ def update_graph(pathway_filter, selected_node):
         name='Edges'))
     
     for node_type, color in [('prescription', 'red'), ('herb', 'orange'), ('gene', 'green'), ('pathway', 'purple')]:
-        filtered_nodes = [n for n in nodes if filtered_G.nodes[n]['color'] == color]
+        filtered_nodes = [n for n in filtered_G.nodes() if filtered_G.nodes[n]['color'] == color]
         if filtered_nodes:
             fig.add_trace(go.Scatter(
-                x=[shell_positions[n][0] for n in filtered_nodes],
-                y=[shell_positions[n][1] for n in filtered_nodes],
+                x=[pos[n][0] for n in filtered_nodes],
+                y=[pos[n][1] for n in filtered_nodes],
                 mode='markers+text',
                 text=filtered_nodes,
                 marker=dict(size=[filtered_G.nodes[n].get('size', 300) for n in filtered_nodes], color=color, opacity=0.8),
@@ -134,8 +129,13 @@ def update_graph(pathway_filter, selected_node):
     
     return fig
 
+def select_node(event):
+    st.session_state['selected_node'] = event.points[0]['text']
+    st.rerun()
+
 fig = update_graph(pathway_filter, st.session_state['selected_node'])
-st.plotly_chart(fig)  
+fig.data[1].on_click(select_node)
+st.plotly_chart(fig)
 
 if st.button("Reset Selection"):
     st.session_state['selected_node'] = None
