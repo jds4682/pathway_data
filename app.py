@@ -68,7 +68,7 @@ for herb in T6[1:]:
         value = float(row['Value'])
         score = value * T6_weights.get(herb, 1)
         data_list.append([herb, gene, score])
-        G.add_node(gene, type='gene', size=max(15, min(score * 0.5, 5)), color='green', layer=2)
+        G.add_node(gene, type='gene', size=max(15, min(score * 0.5, 3)), color='green', layer=2)
         G.add_edge(herb, gene, weight=score)
 
 # Pathway 데이터 불러오기
@@ -81,7 +81,7 @@ if os.path.exists(pathway_file):
         score = row['Score']
         total_score = row['Total Score']
         
-        G.add_node(pathway, type='pathway', size=max(15, min(total_score * 0.5, 6)), color='purple', layer=3)
+        G.add_node(pathway, type='pathway', size=max(15, min(total_score * 0.5, 3)), color='purple', layer=3)
         G.add_edge(gene, pathway, weight=score)
 
 pathway_options = ["All"] + list(df_pathway['Pathway'].unique())
