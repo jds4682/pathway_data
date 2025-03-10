@@ -15,16 +15,20 @@ response = requests.get(url)
 if response.status_code == 200:
     df_pathway = pd.read_excel(BytesIO(response.content))
 else:
-    print("파일을 다운로드할 수 없습니다.")
+    st.error("파일을 다운로드할 수 없습니다.")
 
 T6 = ["Saengmaek-san", "SMHB00336", "SMHB00041"]
-T6_weights = {"SMHB00336": 3.75, "SMHB00041": 3.75}
+T6_weights = {
+    "SMHB00336": 3.75,
+    "SMHB00041": 3.75
+}
 
 data_list = []
 
 tang_name = T6[0]
 st.write(tang_name)
 
+# 네트워크 그래프 생성
 G = nx.Graph()
 G.add_node(tang_name, type='prescription', color='red', layer=0, size=12)
 
@@ -32,16 +36,16 @@ for herb in T6[1:]:
     G.add_node(herb, type='herb', color='orange', layer=1, size=8)
     G.add_edge(tang_name, herb, weight=1.5)
     
-    url_path = "https://github.com/jds4682/pathway_data/raw/refs/heads/main/" + herb + '.csv'
+    url_path = f"https://github.com/jds4682/pathway_data/raw/refs/heads/main/{herb}.csv"
     response = requests.get(url_path)
     
     if response.status_code == 200:
         try:
             df = pd.read_csv(BytesIO(response.content), encoding='ISO-8859-1')
         except UnicodeDecodeError:
-            print("파일을 읽을 수 없습니다. 인코딩 문제 발생.")
+            continue
     else:
-        print("파일을 다운로드할 수 없습니다.")
+        continue
     
     df = df[pd.to_numeric(df['P_value'], errors='coerce').notna()]
     df = df[pd.to_numeric(df['Value'], errors='coerce').notna()]
@@ -66,15 +70,13 @@ for _, row in df_pathway.iterrows():
     G.add_edge(gene, pathway, weight=score)
 
 pathway_options = ["All"] + list(df_pathway['Pathway'].unique())
+selected_node = st.session_state.get("selected_node", None)
 pathway_filter = st.selectbox("Select a Pathway", pathway_options, index=0)
 
-clicked_node = st.session_state.get("clicked_node", None)
-
-def update_graph(pathway_filter, clicked_node):
+def update_graph(pathway_filter, selected_node):
     filtered_G = G.copy()
-    if clicked_node:
-        nodes_to_keep = set([clicked_node])
-        nodes_to_keep.update([n for n in G.neighbors(clicked_node)])
+    if selected_node:
+        nodes_to_keep = set([selected_node]) | set(G.neighbors(selected_node))
         filtered_G = G.subgraph(nodes_to_keep)
     elif pathway_filter != "All":
         nodes_to_keep = {n for n, d in G.nodes(data=True) if d['type'] in ['prescription', 'herb']}
@@ -88,7 +90,8 @@ def update_graph(pathway_filter, clicked_node):
     for node, data in filtered_G.nodes(data=True):
         layers[data['type']].append(node)
     
-    shell_positions = nx.shell_layout(G, [layers['prescription'], layers['herb'], layers['gene'], layers['pathway']])
+    shell_positions = nx.shell_layout(filtered_G, 
+        [layers['prescription'], layers['herb'], layers['gene'], layers['pathway']])
     
     nodes = list(filtered_G.nodes())
     node_colors = [filtered_G.nodes[n]['color'] for n in nodes]
@@ -129,9 +132,7 @@ def update_graph(pathway_filter, clicked_node):
         xaxis=dict(showgrid=False, zeroline=False, visible=False),
         yaxis=dict(showgrid=False, zeroline=False, visible=False))
     
-    fig.write_html(f"{tang_name}_network_graph.html")
-    
     return fig
 
-fig = update_graph(pathway_filter, clicked_node)
+fig = update_graph(pathway_filter, selected_node)
 st.plotly_chart(fig)
