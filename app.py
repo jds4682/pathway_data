@@ -335,13 +335,6 @@ def update_graph(pathway_filter, selected_node):
     return fig
 
 fig = update_graph(pathway_filter, st.session_state['selected_node'])
-selected_points = plotly_events(fig)
-# 선택한 노드 정보 업데이트
-if selected_points:
-    point_index = selected_points[0]["pointIndex"]
-    st.session_state["selected_node"] = nodes[point_index]
-    fig = update_graph(pathway_filter, st.session_state['selected_node'])
-    
 
 st.plotly_chart(fig)  
 
