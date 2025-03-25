@@ -253,6 +253,7 @@ def update_graph(pathway_filter, selected_node):
     filtered_G = G.copy()
     if selected_node:
         nodes_to_keep = set([selected_node]) | set(G.neighbors(selected_node))
+        st.write(nodes_to_keep)
         for neighbor in list(G.neighbors(selected_node)):
             nodes_to_keep.update(G.neighbors(neighbor))
         filtered_G = G.subgraph(nodes_to_keep)
