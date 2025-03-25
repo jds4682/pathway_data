@@ -33,7 +33,7 @@ T7_weights = {
 }
 #don't touch above this area!!!!!!!!!!!!!
 
-#df_pathway = load_pathway_data(T6[0])
+df_pathway = load_pathway_data(T6[0])
 
 filters = {T6[0]: (T6, T6_weights), T7[0]: (T7, T7_weights)}
 filter_options = list(filters.keys())
