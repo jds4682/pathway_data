@@ -3,11 +3,10 @@ import networkx as nx
 import pandas as pd
 import os
 import plotly.graph_objects as go
-
 import requests
-import pandas as pd
 from io import BytesIO
 
+# Load pathway data
 url = "https://github.com/jds4682/pathway_data/raw/db346c9671fd44fc808ffe11cbc3b2bc788513d9/Saengmaek-san_pathway_scores.xlsx"
 response = requests.get(url)
 
@@ -16,21 +15,29 @@ if response.status_code == 200:
 else:
     st.error("파일을 다운로드할 수 없습니다.")
 
+# Define T6 filter
 T6 = ["Saengmaek-san", "SMHB00336", "SMHB00041"]
-T6_weights = {
-    "SMHB00336": 3.75,
-    "SMHB00041": 3.75
-}
+T6_weights = {"SMHB00336": 3.75, "SMHB00041": 3.75}
+
+# Define additional filter
+T7 = ["New-Tang", "SMHB00336"]
+T7_weights = {"SMHB00336": 4.0}
+
+filters = {"T6": (T6, T6_weights), "T7": (T7, T7_weights)}
+filter_options = list(filters.keys())
+selected_filter = st.selectbox("Select a Filter", filter_options)
+
+selected_tang, selected_weights = filters[selected_filter]
 
 data_list = []
 
-tang_name = T6[0]
+tang_name = selected_tang[0]
 st.write(tang_name)
 
 G = nx.Graph()
 G.add_node(tang_name, type='prescription', color='red', layer=0, size=12)
 
-for herb in T6[1:]:
+for herb in selected_tang[1:]:
     G.add_node(herb, type='herb', color='orange', layer=1, size=8)
     G.add_edge(tang_name, herb, weight=1.5)
 
@@ -47,13 +54,12 @@ for herb in T6[1:]:
 
     df = df[pd.to_numeric(df['P_value'], errors='coerce').notna()]
     df = df[pd.to_numeric(df['Value'], errors='coerce').notna()]
-
     filtered_df = df[(df['P_value'].astype(float) < 0.01) & (df['Value'].astype(float) > 1)]
 
     for _, row in filtered_df.iterrows():
         gene = row['Gene symbol']
         value = float(row['Value'])
-        score = value * T6_weights.get(herb, 1)
+        score = value * selected_weights.get(herb, 1)
         data_list.append([herb, gene, score])
         G.add_node(gene, type='gene', size=max(15, min(score * 0.5, 3)), color='green', layer=2)
         G.add_edge(herb, gene, weight=score)
