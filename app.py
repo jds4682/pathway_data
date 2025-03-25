@@ -326,7 +326,13 @@ def update_graph(pathway_filter, selected_node):
     )
 
     fig.update_traces(marker=dict(symbol='circle'), selector=dict(mode='markers+text'))
-    fig.update_layout(clickmode='event')
+    fig.update_layout(clickmode='event+select')
+    selected_points = plotly_events(fig)
+
+    # 선택한 노드 정보 업데이트
+    if selected_points:
+        point_index = selected_points[0]["pointIndex"]
+        st.session_state["selected_node"] = nodes[point_index]
 
     return fig
 
