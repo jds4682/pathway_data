@@ -326,7 +326,7 @@ def update_graph(pathway_filter, selected_node):
     )
 
     fig.update_traces(marker=dict(symbol='circle'), selector=dict(mode='markers+text'))
-    fig.update_layout(clickmode='event+select')
+    fig.update_layout(clickmode='event')
 
     return fig
 
