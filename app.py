@@ -253,23 +253,24 @@ def update_graph(pathway_filter, selected_node):
     filtered_G = G.copy()
 
     if selected_node:
-        # 선택된 노드와 이웃 노드들 가져오기
         nodes_to_keep = set([selected_node]) | set(G.neighbors(selected_node))
 
-        # 이웃 노드들의 이웃 노드까지 추가 (원하는 범위를 조절)
+        # 선택한 노드의 이웃의 이웃까지 포함
         for neighbor in list(G.neighbors(selected_node)):
-            nodes_to_keep.update(G.neighbors(neighbor))  # 2단계 이웃까지 포함
+            nodes_to_keep.update(G.neighbors(neighbor))
 
-        # 그래프 필터링
-        filtered_G = G.subgraph(nodes_to_keep).copy()
-
+        # 확장된 서브그래프 생성
+        filtered_G = G.subgraph(nodes_to_keep)
+    
     elif pathway_filter != "All":
         nodes_to_keep = {n for n, d in G.nodes(data=True) if d['type'] in ['prescription', 'herb']}
+
         for edge in G.edges():
             if edge[1] == pathway_filter or edge[0] == pathway_filter:
                 nodes_to_keep.add(edge[0])
                 nodes_to_keep.add(edge[1])
-        filtered_G = G.subgraph(nodes_to_keep).copy()
+
+        filtered_G = G.subgraph(nodes_to_keep)
 
     # 필터링된 그래프의 레이아웃 설정
     layers = {'prescription': [], 'herb': [], 'gene': [], 'pathway': []}
