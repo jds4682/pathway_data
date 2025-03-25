@@ -5,6 +5,7 @@ import os
 import plotly.graph_objects as go
 import requests
 from io import BytesIO
+from streamlit_plotly_events import plotly_events
 
 def load_pathway_data(name):
     url = f"https://raw.githubusercontent.com/jds4682/pathway_data/main/{name}_pathway_scores.xlsx"
@@ -327,6 +328,14 @@ def update_graph(pathway_filter, selected_node):
 
     fig.update_traces(marker=dict(symbol='circle'), selector=dict(mode='markers+text'))
     fig.update_layout(clickmode='event+select')
+
+    # 선택된 노드 이벤트 가져오기
+    selected_points = plotly_events(fig)
+    
+    # 선택한 노드 정보 업데이트
+    if selected_points:
+        point_index = selected_points[0]["pointIndex"]
+        st.session_state["selected_node"] = nodes[point_index]
     
     return fig
 
