@@ -6,22 +6,31 @@ import plotly.graph_objects as go
 import requests
 from io import BytesIO
 
-# Load pathway data
-url = "https://github.com/jds4682/pathway_data/raw/db346c9671fd44fc808ffe11cbc3b2bc788513d9/Saengmaek-san_pathway_scores.xlsx"
-response = requests.get(url)
+def load_pathway_data():
+    url = "https://github.com/jds4682/pathway_data/raw/db346c9671fd44fc808ffe11cbc3b2bc788513d9/Saengmaek-san_pathway_scores.xlsx"
+    response = requests.get(url)
+    if response.status_code == 200:
+        return pd.read_excel(BytesIO(response.content))
+    else:
+        st.error("파일을 다운로드할 수 없습니다.")
+        return None
 
-if response.status_code == 200:
-    df_pathway = pd.read_excel(BytesIO(response.content))
-else:
-    st.error("파일을 다운로드할 수 없습니다.")
+df_pathway = load_pathway_data()
 
-# Define T6 filter
+# Define filters
 T6 = ["Saengmaek-san", "SMHB00336", "SMHB00041"]
 T6_weights = {"SMHB00336": 3.75, "SMHB00041": 3.75}
 
-# Define additional filter
-T7 = ["New-Tang", "SMHB00336"]
-T7_weights = {"SMHB00336": 4.0}
+T7 = ["Sosiho-tang", "SMHB00058", "SMHB00188", "SMHB00336", "SMHB00035", "SMHB00133", "SMHB00367", "SMHB00090"]
+T7_weights = {
+    "SMHB00058": 11.25,
+    "SMHB00188": 7.5,
+    "SMHB00336": 3.75,
+    "SMHB00035": 3.75,
+    "SMHB00133": 1.88,
+    "SMHB00367": 1.5,
+    "SMHB00090": 2
+}
 
 filters = {"T6": (T6, T6_weights), "T7": (T7, T7_weights)}
 filter_options = list(filters.keys())
@@ -41,7 +50,7 @@ for herb in selected_tang[1:]:
     G.add_node(herb, type='herb', color='orange', layer=1, size=8)
     G.add_edge(tang_name, herb, weight=1.5)
 
-    url_path = f"https://github.com/jds4682/pathway_data/raw/refs/heads/main/{herb}.csv"
+    url_path = f"https://github.com/jds4682/pathway_data/raw/main/{herb}.csv"
     response = requests.get(url_path)
 
     if response.status_code == 200:
@@ -64,16 +73,17 @@ for herb in selected_tang[1:]:
         G.add_node(gene, type='gene', size=max(15, min(score * 0.5, 3)), color='green', layer=2)
         G.add_edge(herb, gene, weight=score)
 
-for _, row in df_pathway.iterrows():
-    gene = row['Gene']
-    pathway = row['Pathway']
-    score = row['Score']
-    total_score = row['Total Score']
+if df_pathway is not None:
+    for _, row in df_pathway.iterrows():
+        gene = row['Gene']
+        pathway = row['Pathway']
+        score = row['Score']
+        total_score = row['Total Score']
 
-    G.add_node(pathway, type='pathway', size=max(15, min(total_score * 0.5, 3)), color='purple', layer=3)
-    G.add_edge(gene, pathway, weight=score)
+        G.add_node(pathway, type='pathway', size=max(15, min(total_score * 0.5, 3)), color='purple', layer=3)
+        G.add_edge(gene, pathway, weight=score)
 
-pathway_options = ["All"] + list(df_pathway['Pathway'].unique())
+pathway_options = ["All"] + (list(df_pathway['Pathway'].unique()) if df_pathway is not None else [])
 if 'selected_node' not in st.session_state:
     st.session_state['selected_node'] = None
 
