@@ -7,7 +7,7 @@ import requests
 from io import BytesIO
 
 def load_pathway_data(name):
-    url = "https://github.com/jds4682/pathway_data/blob/9cdfa0e4c1d762fd9db09194d563b5f792ab5bae/" + name + "_pathway_scores.xlsx"
+    url = "https://github.com/jds4682/pathway_data/blob/main/" + name + "_pathway_scores.xlsx"
     response = requests.get(url)
     print("새로 url 받았음")
     if response.status_code == 200:
@@ -33,7 +33,6 @@ T7_weights = {
 }
 #don't touch above this area!!!!!!!!!!!!!
 
-df_pathway = load_pathway_data(T6[0])
 
 filters = {T6[0]: (T6, T6_weights), T7[0]: (T7, T7_weights)}
 filter_options = list(filters.keys())
