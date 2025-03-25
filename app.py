@@ -7,7 +7,7 @@ import requests
 from io import BytesIO
 
 def load_pathway_data(name):
-    url = "https://github.com/jds4682/pathway_data/raw/db346c9671fd44fc808ffe11cbc3b2bc788513d9/{name}_pathway_scores.xlsx"
+    url = "https://github.com/jds4682/pathway_data/raw/db346c9671fd44fc808ffe11cbc3b2bc788513d9/Saengmaek-san_pathway_scores.xlsx"
     response = requests.get(url)
     if response.status_code == 200:
         return pd.read_excel(BytesIO(response.content))
