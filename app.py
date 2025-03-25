@@ -235,7 +235,8 @@ for herb in selected_tang[1:]:
             data_list[gene] =  data_list[gene] + score 
         else :
             data_list[gene] = score
-        G.add_node(gene, type='gene', size=data_list[gene] * 0.03, color='green', layer=2)
+    for gene in data_list.keys():
+        G.add_node(gene, type='gene', size=data_list[gene] / avg(data_list.values()), color='green', layer=2)
         G.add_edge(herb, gene, weight=score)
 
 if df_pathway is not None:
@@ -247,8 +248,8 @@ if df_pathway is not None:
             total_score[pathway] = data_list[gene]
         else :
             total_score[pathway] = total_score[pathway] + data_list[gene] 
-        
-        G.add_node(pathway, type='pathway', size= total_score[pathway] * 0.03, color='purple', layer=3)
+    for pathway in total_score.keys():
+        G.add_node(pathway, type='pathway', size= total_score[pathway]/avg(total_score.values()), color='purple', layer=3)
         G.add_edge(gene, pathway, weight=score)
 
 pathway_options = ["All"] + (list(df_pathway['Pathway'].unique()) if df_pathway is not None else [])
