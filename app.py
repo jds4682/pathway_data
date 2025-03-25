@@ -338,14 +338,6 @@ def update_graph(pathway_filter, selected_node):
 fig = update_graph(pathway_filter, st.session_state.get("selected_node"))
 st.plotly_chart(fig)
 
-# ✅ 클릭 이벤트 추가
-selected_points = plotly_events(fig)  # 사용자가 클릭한 포인트 가져오기
-
-
-# ✅ 선택된 노드 표시
-if "selected_node" in st.session_state and st.session_state["selected_node"]:
-    st.write(f"선택된 노드: {st.session_state['selected_node']}")
-
 
 
 # Reset 버튼 추가
