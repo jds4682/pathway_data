@@ -31,7 +31,7 @@ T7_weights = {
 }
 
 df_pathway = load_pathway_data()
-filters = {T6[0]: (T6, T6_weights), T7[0]: (T7, T7_weights)}
+filters = {"T6": (T6, T6_weights), "T7": (T7, T7_weights)}
 filter_options = list(filters.keys())
 selected_filter = st.selectbox("Select a Filter", filter_options)
 
