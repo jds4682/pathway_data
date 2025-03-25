@@ -6,7 +6,8 @@ import plotly.graph_objects as go
 import requests
 from io import BytesIO
 from streamlit_plotly_events import plotly_events
-
+def avg(data):
+    return sum(data) / len(data)
 def load_pathway_data(name):
     url = f"https://raw.githubusercontent.com/jds4682/pathway_data/main/{name}_pathway_scores.xlsx"
     response = requests.get(url)
