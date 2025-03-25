@@ -333,7 +333,7 @@ def update_graph(pathway_filter, selected_node):
     
     
     return fig
-
+fig = update_graph(pathway_filter, st.session_state['selected_node'])
 # ✅ 클릭 이벤트 추가
 selected_points = plotly_events(fig)  # 사용자가 클릭한 포인트 가져오기
 
