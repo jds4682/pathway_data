@@ -7,7 +7,7 @@ import requests
 from io import BytesIO
 
 def load_pathway_data(name):
-    url = "https://github.com/jds4682/pathway_data/blob/b391e02cb6a42bd1187062858cc103f15ad5d0ba/" + name + "_pathway_scores.xlsx"
+    url = "https://github.com/jds4682/pathway_data/blob/9cdfa0e4c1d762fd9db09194d563b5f792ab5bae/" + name + "_pathway_scores.xlsx"
     response = requests.get(url)
     print("새로 url 받았음")
     if response.status_code == 200:
