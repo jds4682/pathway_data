@@ -239,11 +239,11 @@ for herb in selected_tang[1:]:
             data_list[gene] =  data_list[gene] + score 
         else :
             data_list[gene] = score
-        G.add_node(gene, type='gene', color='green', layer=2)
+        G.add_node(gene, type='gene', size= vari * data_list[gene] / avg(data_list.values()), color='green', layer=2)
         G.add_edge(herb, gene)
         
-    for gene in data_list.keys():
-        G.add_node(gene, type='gene', size= vari * data_list[gene] / avg(data_list.values()), color='green', layer=2)
+    #for gene in data_list.keys():
+        
         
 
 if df_pathway is not None:
