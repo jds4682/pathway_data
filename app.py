@@ -251,31 +251,41 @@ pathway_filter = st.selectbox("Select a Pathway", pathway_options, index=0)
 
 def update_graph(pathway_filter, selected_node):
     filtered_G = G.copy()
+
     if selected_node:
+        # 선택된 노드와 이웃 노드들 가져오기
         nodes_to_keep = set([selected_node]) | set(G.neighbors(selected_node))
-        st.write(nodes_to_keep)
+
+        # 이웃 노드들의 이웃 노드까지 추가 (원하는 범위를 조절)
         for neighbor in list(G.neighbors(selected_node)):
-            nodes_to_keep.update(G.neighbors(neighbor))
-        filtered_G = G.subgraph(nodes_to_keep)
+            nodes_to_keep.update(G.neighbors(neighbor))  # 2단계 이웃까지 포함
+
+        # 그래프 필터링
+        filtered_G = G.subgraph(nodes_to_keep).copy()
+
     elif pathway_filter != "All":
         nodes_to_keep = {n for n, d in G.nodes(data=True) if d['type'] in ['prescription', 'herb']}
         for edge in G.edges():
             if edge[1] == pathway_filter or edge[0] == pathway_filter:
                 nodes_to_keep.add(edge[0])
                 nodes_to_keep.add(edge[1])
-        filtered_G = G.subgraph(nodes_to_keep)
+        filtered_G = G.subgraph(nodes_to_keep).copy()
 
+    # 필터링된 그래프의 레이아웃 설정
     layers = {'prescription': [], 'herb': [], 'gene': [], 'pathway': []}
     for node, data in filtered_G.nodes(data=True):
         layers[data['type']].append(node)
 
-    shell_positions = nx.shell_layout(filtered_G, 
-        [layers['prescription'], layers['herb'], layers['gene'], layers['pathway']])
+    shell_positions = nx.shell_layout(
+        filtered_G, 
+        [layers['prescription'], layers['herb'], layers['gene'], layers['pathway']]
+    )
 
     nodes = list(filtered_G.nodes())
     node_colors = [filtered_G.nodes[n]['color'] for n in nodes]
     node_sizes = [filtered_G.nodes[n].get('size', 300) for n in nodes]
     edges = list(filtered_G.edges())
+
     edge_x, edge_y = [], []
     for edge in edges:
         x0, y0 = shell_positions[edge[0]]
@@ -289,7 +299,8 @@ def update_graph(pathway_filter, selected_node):
         line=dict(width=1, color='gray'),
         hoverinfo='none',
         mode='lines',
-        name='Edges'))
+        name='Edges'
+    ))
 
     for node_type, color in [('prescription', 'red'), ('herb', 'orange'), ('gene', 'green'), ('pathway', 'purple')]:
         filtered_nodes = [n for n in nodes if filtered_G.nodes[n]['color'] == color]
@@ -301,7 +312,8 @@ def update_graph(pathway_filter, selected_node):
                 text=filtered_nodes,
                 marker=dict(size=[filtered_G.nodes[n].get('size', 300) for n in filtered_nodes], color=color, opacity=0.8),
                 textposition='top center',
-                name=node_type))
+                name=node_type
+            ))
 
     fig.update_layout(
         width=1200,
@@ -309,12 +321,14 @@ def update_graph(pathway_filter, selected_node):
         showlegend=True,
         title=f"{tang_name} Network Graph",
         xaxis=dict(showgrid=False, zeroline=False, visible=False),
-        yaxis=dict(showgrid=False, zeroline=False, visible=False))
+        yaxis=dict(showgrid=False, zeroline=False, visible=False)
+    )
 
     fig.update_traces(marker=dict(symbol='circle'), selector=dict(mode='markers+text'))
     fig.update_layout(clickmode='event+select')
 
     return fig
+
 
 fig = update_graph(pathway_filter, st.session_state['selected_node'])
 st.plotly_chart(fig)  
