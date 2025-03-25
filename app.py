@@ -239,6 +239,7 @@ for herb in selected_tang[1:]:
             data_list[gene] =  data_list[gene] + score 
         else :
             data_list[gene] = score
+        G.add_node(gene, type='gene', color='green', layer=2)
         G.add_edge(herb, gene)
         
     for gene in data_list.keys():
