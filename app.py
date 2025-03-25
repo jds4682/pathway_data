@@ -195,6 +195,9 @@ filters = {
     T12[0]: (T12, T12_weights),
     T13[0]: (T13, T13_weights),
 }
+#node size 
+vari = 5
+
 filter_options = list(filters.keys())
 selected_filter = st.selectbox("Select a Filter", filter_options)
 selected_tang, selected_weights = filters[selected_filter]
@@ -237,7 +240,7 @@ for herb in selected_tang[1:]:
         else :
             data_list[gene] = score
     for gene in data_list.keys():
-        G.add_node(gene, type='gene', size=data_list[gene] / avg(data_list.values()), color='green', layer=2)
+        G.add_node(gene, type='gene', size= vari * data_list[gene] / avg(data_list.values()), color='green', layer=2)
         G.add_edge(herb, gene, weight=score)
 
 if df_pathway is not None:
@@ -250,7 +253,7 @@ if df_pathway is not None:
         else :
             total_score[pathway] = total_score[pathway] + data_list[gene] 
     for pathway in total_score.keys():
-        G.add_node(pathway, type='pathway', size= total_score[pathway]/avg(total_score.values()), color='purple', layer=3)
+        G.add_node(pathway, type='pathway', size= vari * total_score[pathway]/avg(total_score.values()), color='purple', layer=3)
         G.add_edge(gene, pathway, weight=score)
 
 pathway_options = ["All"] + (list(df_pathway['Pathway'].unique()) if df_pathway is not None else [])
