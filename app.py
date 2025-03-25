@@ -35,6 +35,12 @@ filters = {T6[0]: (T6, T6_weights), T7[0]: (T7, T7_weights)}
 filter_options = list(filters.keys())
 selected_filter = st.selectbox("Select a Filter", filter_options)
 
+if 'df_pathway' not in st.session_state or st.session_state['current_filter'] != selected_filter:
+    st.session_state['df_pathway'] = load_pathway_data(selected_filter)
+    st.session_state['current_filter'] = selected_filter  # 현재 선택한 필터 저장
+
+df_pathway = st.session_state['df_pathway']
+
 selected_tang, selected_weights = filters[selected_filter]
 
 data_list = []
