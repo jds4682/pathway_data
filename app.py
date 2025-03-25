@@ -330,19 +330,20 @@ def update_graph(pathway_filter, selected_node):
     fig.update_layout(clickmode='event+select')
 
     # 선택된 노드 이벤트 가져오기
-    selected_points = plotly_events(fig)
     
-    # 선택한 노드 정보 업데이트
-    if selected_points:
-        point_index = selected_points[0]["pointIndex"]
-        st.session_state["selected_node"] = nodes[point_index]
     
     return fig
 
 
 fig = update_graph(pathway_filter, st.session_state['selected_node'])
 st.plotly_chart(fig)  
-
+selected_points = plotly_events(fig)
+    
+# 선택한 노드 정보 업데이트
+if selected_points:
+    point_index = selected_points[0]["pointIndex"]
+    st.session_state["selected_node"] = nodes[point_index]
+    
 if st.button("Reset Selection"):
     st.session_state['selected_node'] = None
     st.rerun()
