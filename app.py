@@ -201,8 +201,9 @@ tang_name = selected_tang[0]
 st.write(tang_name)
 
 df_pathway = load_pathway_data(tang_name)
-data_list = []
 
+data_list = {}
+total_score = {}
 
 G = nx.Graph()
 G.add_node(tang_name, type='prescription', color='red', layer=0, size=12)
@@ -230,8 +231,11 @@ for herb in selected_tang[1:]:
         gene = row['Gene symbol']
         value = float(row['Value'])
         score = value * selected_weights.get(herb, 1)
-        data_list.append([herb, gene, score])
-        G.add_node(gene, type='gene', size=score * 0.3, color='green', layer=2)
+        if gene in data_list.keys() :  
+            data_list[gene] =  data_list[gene] + score 
+        else :
+            data_list[gene] = score
+        G.add_node(gene, type='gene', size=data_list[gene] * 0.3, color='green', layer=2)
         G.add_edge(herb, gene, weight=score)
 
 if df_pathway is not None:
@@ -239,9 +243,12 @@ if df_pathway is not None:
         gene = row['Gene']
         pathway = row['Pathway']
         score = row['Score']
-        total_score = row['Total Score']
-
-        G.add_node(pathway, type='pathway', size=score * 0.3, color='purple', layer=3)
+        if pathway not in total_score :
+            total_score[pathway] = data_list[gene]
+        else :
+            total_score[pathway] = total_score[pathway] + data_list[gene] 
+        
+        G.add_node(pathway, type='pathway', size= total_score[pathway] * 0.3, color='purple', layer=3)
         G.add_edge(gene, pathway, weight=score)
 
 pathway_options = ["All"] + (list(df_pathway['Pathway'].unique()) if df_pathway is not None else [])
