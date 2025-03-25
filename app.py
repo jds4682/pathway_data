@@ -12,7 +12,7 @@ def load_pathway_data(name):
     if response.status_code == 200:
         return pd.read_excel(BytesIO(response.content))
     else:
-        st.error("파일을 다운로드할 수 없습니다.")
+        st.error("Could not able to download contents.")
         return None
 
 # Define filters
@@ -29,6 +29,7 @@ T7_weights = {
     "SMHB00367": 1.5,
     "SMHB00090": 2
 }
+#don't touch above this area!!!!!!!!!!!!!
 
 #df_pathway = load_pathway_data(T6[0])
 
@@ -36,11 +37,7 @@ filters = {T6[0]: (T6, T6_weights), T7[0]: (T7, T7_weights)}
 filter_options = list(filters.keys())
 selected_filter = st.selectbox("Select a Filter", filter_options)
 
-if 'df_pathway' not in st.session_state or st.session_state['current_filter'] != selected_filter:
-    st.session_state['df_pathway'] = load_pathway_data(selected_filter)
-    st.session_state['current_filter'] = selected_filter  # 현재 선택한 필터 저장
-
-df_pathway = st.session_state['df_pathway']
+df_pathway = load_pathway_data(selected_filter)
 
 selected_tang, selected_weights = filters[selected_filter]
 
