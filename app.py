@@ -6,16 +6,14 @@ import plotly.graph_objects as go
 import requests
 from io import BytesIO
 
-def load_pathway_data():
-    url = "https://github.com/jds4682/pathway_data/raw/db346c9671fd44fc808ffe11cbc3b2bc788513d9/Saengmaek-san_pathway_scores.xlsx"
+def load_pathway_data(name):
+    url = "https://github.com/jds4682/pathway_data/raw/db346c9671fd44fc808ffe11cbc3b2bc788513d9/{name}_pathway_scores.xlsx"
     response = requests.get(url)
     if response.status_code == 200:
         return pd.read_excel(BytesIO(response.content))
     else:
         st.error("파일을 다운로드할 수 없습니다.")
         return None
-
-df_pathway = load_pathway_data()
 
 # Define filters
 T6 = ["Saengmaek-san", "SMHB00336", "SMHB00041"]
@@ -32,7 +30,8 @@ T7_weights = {
     "SMHB00090": 2
 }
 
-filters = {"T6": (T6, T6_weights), "T7": (T7, T7_weights)}
+df_pathway = load_pathway_data()
+filters = {T6[0]: (T6, T6_weights), T7[0]: (T7, T7_weights)}
 filter_options = list(filters.keys())
 selected_filter = st.selectbox("Select a Filter", filter_options)
 
