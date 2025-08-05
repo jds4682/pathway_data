@@ -364,8 +364,8 @@ def update_graph(pathway_filter, selected_node):
 fig = update_graph(pathway_filter, st.session_state.get("selected_node"))
 st.plotly_chart(fig)
 
-fig = update_graph(pathway_filter, st.session_state.get("selected_node"))
-st.plotly_chart(fig, key='plotly_chart_key') # 고유한 key 추가
+#fig = update_graph(pathway_filter, st.session_state.get("selected_node"))
+#st.plotly_chart(fig, key='plotly_chart_key') # 고유한 key 추가
 
 # 고해상도 TIFF 파일을 다운로드하는 버튼 추가
 st.markdown("### 고해상도 이미지 다운로드")
@@ -402,6 +402,7 @@ with st.container():
 if st.button("Reset Selection"):
     st.session_state["selected_node"] = None
     st.rerun()
+
 
 
 
