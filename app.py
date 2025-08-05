@@ -388,20 +388,21 @@ with st.container():
     scale_value = selected_dpi / 300.0 * (1200 / 1200) # 300dpi를 기준으로 scale 계산
     
     # 이미지를 메모리에 바이트로 저장
-    img_bytes = pio.to_image(fig, format="tiff", scale=scale_value)
+    img_bytes = pio.to_image(fig, format="png", scale=scale_value)
     
     st.download_button(
         label=f"Download {selected_dpi} DPI TIFF",
         data=img_bytes,
         file_name=f"{tang_name}_network_graph_{selected_dpi}dpi.tiff",
         mime="image/tiff",
-        help=f"다운로드될 TIFF 파일의 해상도는 {selected_dpi} DPI입니다."
+        help=f"다운로드될 PNG 파일의 해상도는 {selected_dpi} DPI입니다."
     )
 
 # Reset 버튼 추가
 if st.button("Reset Selection"):
     st.session_state["selected_node"] = None
     st.rerun()
+
 
 
 
