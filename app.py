@@ -391,7 +391,7 @@ with st.container():
     img_bytes = pio.to_image(fig, format="png", scale=scale_value)
     
     st.download_button(
-        label=f"Download {selected_dpi} DPI TIFF",
+        label=f"Download {selected_dpi} DPI PNG",
         data=img_bytes,
         file_name=f"{tang_name}_network_graph_{selected_dpi}dpi.tiff",
         mime="image/tiff",
@@ -402,6 +402,7 @@ with st.container():
 if st.button("Reset Selection"):
     st.session_state["selected_node"] = None
     st.rerun()
+
 
 
 
