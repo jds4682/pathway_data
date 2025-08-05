@@ -1,5 +1,6 @@
 import streamlit as st
 import networkx as nx
+import plotly.io as pio
 import pandas as pd
 import os
 import plotly.graph_objects as go
@@ -363,11 +364,44 @@ def update_graph(pathway_filter, selected_node):
 fig = update_graph(pathway_filter, st.session_state.get("selected_node"))
 st.plotly_chart(fig)
 
+fig = update_graph(pathway_filter, st.session_state.get("selected_node"))
+st.plotly_chart(fig)
 
+# 고해상도 TIFF 파일을 다운로드하는 버튼 추가
+st.markdown("### 고해상도 이미지 다운로드")
+with st.container():
+    # 사용자가 DPI를 선택할 수 있도록 슬라이더 또는 selectbox 추가
+    dpi_options = [300, 600, 1200]
+    selected_dpi = st.select_slider("Select DPI for Download", options=dpi_options, value=600)
+    
+    # DPI에 따라 scale 값을 계산합니다. (기본 plot 크기 1200x1200을 기준으로)
+    # 300 DPI = 1200px / 4 inch. 따라서, scale=1은 1200x1200 픽셀을 생성
+    # 600 DPI = 1200px * (600/300) = 2400px. 따라서, scale=2가 필요
+    # 1200 DPI = 1200px * (1200/300) = 4800px. 따라서, scale=4가 필요
+    # 1200px 기준, 300dpi를 100dpi로 가정 (100 dpi * 12inch = 1200px)
+    # 100dpi * scale = 300dpi, scale = 3
+    # 100dpi * scale = 600dpi, scale = 6
+    # 100dpi * scale = 1200dpi, scale = 12
+    # 여기서는 100dpi를 기준 픽셀/인치로 가정한 계산입니다.
+    # 만약 300dpi를 기준으로 한다면 (300dpi * 4inch = 1200px), scale = selected_dpi / 300 이 됩니다.
+    
+    scale_value = selected_dpi / 300.0 * (1200 / 1200) # 300dpi를 기준으로 scale 계산
+    
+    # 이미지를 메모리에 바이트로 저장
+    img_bytes = pio.to_image(fig, format="tiff", scale=scale_value)
+    
+    st.download_button(
+        label=f"Download {selected_dpi} DPI TIFF",
+        data=img_bytes,
+        file_name=f"{tang_name}_network_graph_{selected_dpi}dpi.tiff",
+        mime="image/tiff",
+        help=f"다운로드될 TIFF 파일의 해상도는 {selected_dpi} DPI입니다."
+    )
 
 # Reset 버튼 추가
 if st.button("Reset Selection"):
     st.session_state["selected_node"] = None
     st.rerun()
+
 
 
