@@ -395,13 +395,14 @@ with st.container():
         data=img_bytes,
         file_name=f"{tang_name}_network_graph_{selected_dpi}dpi.png",
         mime="image/tiff",
-        help=f"다운로드될 PNG 파일의 해상도는 {selected_dpi} DPI입니다."
+        help=f"Resolution of PNG file is {selected_dpi} DPI."
     )
 
 # Reset 버튼 추가
 if st.button("Reset Selection"):
     st.session_state["selected_node"] = None
     st.rerun()
+
 
 
 
