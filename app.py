@@ -368,7 +368,7 @@ st.plotly_chart(fig)
 #st.plotly_chart(fig, key='plotly_chart_key') # 고유한 key 추가
 
 # 고해상도 TIFF 파일을 다운로드하는 버튼 추가
-st.markdown("### 고해상도 이미지 다운로드")
+st.markdown("### High resolution image download")
 with st.container():
     # 사용자가 DPI를 선택할 수 있도록 슬라이더 또는 selectbox 추가
     dpi_options = [300, 600, 1200]
@@ -393,7 +393,7 @@ with st.container():
     st.download_button(
         label=f"Download {selected_dpi} DPI PNG",
         data=img_bytes,
-        file_name=f"{tang_name}_network_graph_{selected_dpi}dpi.tiff",
+        file_name=f"{tang_name}_network_graph_{selected_dpi}dpi.png",
         mime="image/tiff",
         help=f"다운로드될 PNG 파일의 해상도는 {selected_dpi} DPI입니다."
     )
@@ -402,6 +402,7 @@ with st.container():
 if st.button("Reset Selection"):
     st.session_state["selected_node"] = None
     st.rerun()
+
 
 
 
