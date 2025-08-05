@@ -345,7 +345,6 @@ def update_graph(pathway_filter, selected_node):
     fig.update_layout(
         width=1200,
         height=1200,
-        scale=3,
         showlegend=True,
         title=f"{tang_name} Network Graph",
         xaxis=dict(showgrid=False, zeroline=False, visible=False),
@@ -370,4 +369,5 @@ st.plotly_chart(fig)
 if st.button("Reset Selection"):
     st.session_state["selected_node"] = None
     st.rerun()
+
 
