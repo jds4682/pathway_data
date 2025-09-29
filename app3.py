@@ -3,125 +3,170 @@ import pandas as pd
 import networkx as nx
 import matplotlib.pyplot as plt
 import os
+import json
 import requests
 from io import BytesIO
 from statsmodels.stats.multitest import multipletests
-from tqdm import tqdm
+import pickle
 
 # --- 1. 초기 설정 및 GitHub 데이터 로딩 함수 ---
 
 st.set_page_config(layout="wide", page_title="Herbal Prescription Network Analysis")
 
 # --- GitHub 데이터 로딩 함수들 ---
+@st.cache_data
 def load_excel_data(name):
     url = f"https://raw.githubusercontent.com/jds4682/pathway_data/main/{name}"
     try:
         response = requests.get(url)
         if response.status_code == 200:
-            st.success(f"'{name}' 파일을 GitHub에서 성공적으로 불러왔습니다.")
             return pd.read_excel(BytesIO(response.content))
         else:
-            st.error(f"GitHub에서 '{name}' 파일을 찾을 수 없습니다. (상태 코드: {response.status_code})")
+            st.error(f"GitHub에서 '{name}' 파일을 찾을 수 없습니다.")
             return None
     except requests.exceptions.RequestException as e:
         st.error(f"네트워크 오류: {e}")
         return None
 
-# ★★★ 개별 약재 데이터(CSV)를 GitHub에서 불러오는 함수 ★★★
-def load_herb_csv_data(smhb_code):
-    url = f"https://raw.githubusercontent.com/jds4682/pathway_data/main/{smhb_code}.csv"
+@st.cache_data
+def load_herb_json_data(smhb_code):
+    url = f"https://raw.githubusercontent.com/jds4682/pathway_data/main/{smhb_code}.json"
     try:
         response = requests.get(url)
         if response.status_code == 200:
-            # CSV 파일을 DataFrame으로 직접 읽음
-            return pd.read_csv(BytesIO(response.content))
+            return response.json()
         else:
-            st.warning(f"GitHub에서 '{smhb_code}.csv' 파일을 찾을 수 없습니다.")
+            st.warning(f"GitHub에서 '{smhb_code}.json' 파일을 찾을 수 없습니다.")
             return None
     except requests.exceptions.RequestException:
-        st.warning(f"'{smhb_code}.csv' 파일 로딩 중 네트워크 오류 발생.")
+        st.warning(f"'{smhb_code}.json' 파일 로딩 중 네트워크 오류 발생.")
         return None
 
-# --- 메인 데이터 로딩 함수 ---
 @st.cache_data
 def load_initial_data():
-    try:
-        herb_df = load_excel_data('all name.xlsx')
-        ingre_data = load_excel_data('SMIT.xlsx')
-        
-        if herb_df is None or ingre_data is None:
-             return None, None
+    herb_df = load_excel_data('all name.xlsx')
+    ingre_data = load_excel_data('SMIT.xlsx')
+    if herb_df is None or ingre_data is None: return None, None
+    ingre_data = ingre_data.dropna(subset=['OB_score'], how='any', axis=0)
+    return herb_df, ingre_data
 
-        ingre_data = ingre_data.dropna(subset=['OB_score'], how='any', axis=0)
-        return herb_df, ingre_data
-        
-    except Exception as e:
-        st.error(f"초기 데이터 로딩 중 오류 발생: {e}")
-        return None, None
-
-# --- 2. 네트워크 분석 핵심 로직 (CSV 파싱으로 수정) ---
-
-def run_network_analysis(selected_herbs_with_grams, ingre_data):
-    t_name = "_".join(selected_herbs_with_grams.keys())
-    smhb_codes = list(selected_herbs_with_grams.values())
-
-    node_list = []
-    edge_list = []
+# --- 2. 네트워크 분석 핵심 로직 (사용자 코드 통합) ---
+def run_network_analysis(selected_herbs_info, ingre_data):
     
-    progress_bar = st.progress(0, text="데이터 로딩을 시작합니다...")
+    # --- ★ Step 1: 사용자가 선택한 약재 데이터를 GitHub에서 로딩 ---
+    t_name = "_".join(selected_herbs_info.keys())
+    Target = [t_name] # 처방 이름
     
-    # ★★★ CSV 파일을 불러와 DataFrame으로 파싱하는 로직 ★★★
+    progress_bar = st.progress(0, text="약재 데이터를 GitHub에서 로딩 중입니다...")
+    smhb_codes = list(selected_herbs_info.values())
     for i, code in enumerate(smhb_codes):
-        # GitHub에서 개별 약재 CSV 데이터 불러오기
-        herb_df_single = load_herb_csv_data(code)
-        
-        if herb_df_single is not None:
-            # DataFrame을 한 줄씩 순회하며 node와 edge 정보 추출
-            for idx, row in herb_df_single.iterrows():
-                group = row.get('group') # 'group' 열이 있다고 가정
-                if group == 'nodes':
-                    info = row.get('info', '') # 'info' 열이 있다고 가정
-                    node_list.append(info.split("<br>"))
-                elif group == 'edges':
-                    source = row.get('source') # 'source' 열이 있다고 가정
-                    target = row.get('target') # 'target' 열이 있다고 가정
-                    edge_list.append([source, target])
-        
-        progress_bar.progress((i + 1) / len(smhb_codes), text=f"데이터 로딩 중: {code}")
-
+        herb_data = load_herb_json_data(code)
+        if herb_data:
+            Target.append(herb_data)
+        progress_bar.progress((i + 1) / len(smhb_codes))
     progress_bar.empty()
 
-    if not node_list:
-        st.error("선택된 약재에 대한 유효한 데이터를 불러오지 못했습니다. GitHub 파일 존재 여부 및 형식을 확인하세요.")
-        return None, None
+    if len(Target) <= 1:
+        st.error("선택된 약재에 대한 유효 데이터를 불러오지 못했습니다.")
+        return None, None, None, None
 
-    # --- 이하 데이터 가공, 필터링, 네트워크 생성 로직은 기존과 거의 동일 ---
+    # --- ▼▼▼ 제공해주신 분석 코드 시작 ▼▼▼ ---
+    
+    t_name = Target.pop(0)
+    node_list = []
+    edge_list = []
+    for herb in Target:
+        for i in range(len(herb)):
+            if herb[i]['group'] == 'nodes':
+                node_list.append(herb[i]['data']['info'].split("<br>"))
+            if herb[i]['group'] == 'edges':
+                edge_list.append([herb[i]['data']['source'], herb[i]['data']['target']])
+
+    # data shaping
     node_data = pd.DataFrame()
-    node_ID, node_label, node_group = [], [], []
-    for item in node_list:
+    node_ID = []
+    node_label = []
+    node_group = []
+    for i in range(len(node_list)):
         try:
-            node_group.append(item[0])
-            node_ID.append(item[1][4:].strip())
-            node_label.append(item[2][6:])
-        except (IndexError, TypeError):
+            node_ID.append(node_list[i][1][4:].strip())
+            node_label.append(node_list[i][2][6:])
+            node_group.append(node_list[i][0])
+        except IndexError:
             continue
     node_data['ID'] = node_ID
     node_data['Label'] = node_label
     node_data['Group'] = node_group
-
+    
     edge_data = pd.DataFrame(edge_list, columns=['SourceID', 'TargetID'])
-    
-    # (OB Score 필터링 등 후속 처리는 여기에 위치)
-    
-    st.success("네트워크 분석이 완료되었습니다!")
-    # (결과 시각화 및 테이블 생성 로직은 이어서 구현)
-    
-    # 임시로 간단한 결과만 반환
-    return "Figure_Object_Placeholder", node_data.head()
 
+    # OB score가 없는 ingredient 데이터들 제거
+    st.write("OB Score 기반으로 유효성분 필터링 중...")
+    drop_list = []
+    valid_ingredients = set(ingre_data['Molecule_name'])
+    for i, row in node_data.iterrows():
+        if row['Group'] == 'MM symptom' or row['Group'] == 'TCM symptom':
+            drop_list.append(i)
+        elif row['Group'] == 'ingredient' and row['Label'] not in valid_ingredients:
+            drop_list.append(i)
+            
+    node_data.drop(list(set(drop_list)), axis=0, inplace=True)
+    st.write(f"유효성분 필터링 완료. {len(drop_list)}개의 노드 제거.")
+
+    # --- ★ FDR 필터링 로직은 웹 환경 제약으로 생략 ---
+    # st.warning("주의: 실시간 웹 환경의 제약으로 인해, FDR(q-value) 기반 타겟 필터링은 현재 버전에서 생략되었습니다.")
+    
+    # node shaping
+    G = nx.Graph()
+    for i, row in node_data.iterrows():
+        color_map = {'herb': 'orange', 'ingredient': 'green', 'disease': 'yellow', 'target': 'skyblue'}
+        G.add_node(row['Label'], ID=row['ID'], Group=row['Group'], color=color_map.get(row['Group'], 'gray'))
+
+    # edge shaping
+    disease_label = []
+    for i, row in edge_data.iterrows():
+        try:
+            source_name = node_data[node_data['ID'] == row['SourceID']]['Label'].iloc[0]
+            destination_name = node_data[node_data['ID'] == row['TargetID']]['Label'].iloc[0]
+            G.add_edge(source_name, destination_name)
+            if row['TargetID'][:4] == 'SMDE':
+                disease_label.append(destination_name)
+        except IndexError:
+            continue
+    
+    # 질병 빈도 계산
+    disease_series = pd.Series(disease_label)
+    disease_table = disease_series.value_counts().reset_index()
+    disease_table.columns = ['Disease', 'Count']
+
+    # 노드 분류
+    node_groups = {'herb': [], 'ingredient': [], 'target': [], 'disease': []}
+    for node, data in G.nodes(data=True):
+        group = data.get('Group')
+        if group in node_groups:
+            node_groups[group].append(node)
+
+    # 시각화
+    st.write("네트워크 시각화 생성 중...")
+    fig, ax = plt.subplots(figsize=(14, 15))
+    shells = [node_groups['herb'], node_groups['ingredient'], node_groups['target'], node_groups['disease']]
+    pos = nx.shell_layout(G, shells)
+    
+    nx.draw_networkx_nodes(G, pos, nodelist=node_groups['herb'], node_color='#ff8800', node_size=100, label='Herb', ax=ax)
+    nx.draw_networkx_nodes(G, pos, nodelist=node_groups['ingredient'], node_color='#00d200', node_size=10, label='Ingredient', ax=ax)
+    nx.draw_networkx_nodes(G, pos, nodelist=node_groups['target'], node_color='#ff3367', node_size=10, label='Target', ax=ax)
+    nx.draw_networkx_nodes(G, pos, nodelist=node_groups['disease'], node_color='#6600ff', node_size=10, label='Disease', ax=ax)
+    nx.draw_networkx_edges(G, pos, width=0.1, ax=ax)
+    
+    ax.legend(scatterpoints=1)
+    ax.set_title(t_name.replace("_", " + "), fontname='DejaVu Sans', fontsize=16)
+
+    # --- ▲▲▲ 제공해주신 분석 코드 종료 ▲▲▲ ---
+    
+    return fig, disease_table.head(20), node_data, edge_data
 
 # --- 3. 웹페이지 UI 구성 ---
-st.title("🌿 천연물 처방 네트워크 분석기 (GitHub-Powered CSV)")
+st.title("🌿 천연물 처방 네트워크 분석기 (GitHub-Powered)")
 
 herb_df, ingre_data = load_initial_data()
 
@@ -130,24 +175,42 @@ if herb_df is not None:
     herb_names = herb_df['korean name'].dropna().unique().tolist()
     selected_herb_names = st.multiselect("분석할 약재를 선택하세요.", options=herb_names)
     
-    selected_herbs_with_grams = {}
+    selected_herbs_info = {}
     if selected_herb_names:
         cols = st.columns(len(selected_herb_names))
         for i, name in enumerate(selected_herb_names):
             with cols[i]:
+                # 용량 입력 UI는 현재 분석 로직에서 사용되지 않으므로, 참고용으로만 둡니다.
                 grams = st.number_input(f"{name} (g)", min_value=0.1, value=4.0, step=0.1, key=name)
                 smhb_id = herb_df[herb_df['korean name'] == name]['SMHB_ID'].iloc[0]
-                selected_herbs_with_grams[name] = smhb_id
+                selected_herbs_info[name] = smhb_id
     
     st.header("2. 분석 실행")
     if st.button("네트워크 분석 시작", disabled=(not selected_herb_names)):
-        with st.spinner("GitHub에서 CSV 데이터를 불러와 네트워크를 생성 중입니다..."):
-            fig, result_df = run_network_analysis(
-                {name: selected_herbs_with_grams[name] for name in selected_herb_names}, 
-                ingre_data
-            )
+        with st.spinner("분석을 실행합니다. 약재 수에 따라 시간이 걸릴 수 있습니다..."):
+            fig, disease_df, node_df, edge_df = run_network_analysis(selected_herbs_info, ingre_data)
             
-            if fig and result_df is not None:
+            if fig and disease_df is not None:
                 st.header("3. 분석 결과")
-                st.subheader("분석된 데이터 (샘플)")
-                st.dataframe(result_df)
+                st.pyplot(fig)
+                
+                st.subheader("상위 20개 연관 질병")
+                st.dataframe(disease_df)
+
+                # --- 결과 다운로드 버튼 ---
+                st.subheader("결과 데이터 다운로드")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.download_button(
+                        label="Node 데이터 다운로드 (CSV)",
+                        data=node_df.to_csv(index=False).encode('utf-8-sig'),
+                        file_name=f"{'_'.join(selected_herbs_info.keys())}_nodes.csv",
+                        mime='text/csv',
+                    )
+                with col2:
+                    st.download_button(
+                        label="Edge 데이터 다운로드 (CSV)",
+                        data=edge_df.to_csv(index=False).encode('utf-8-sig'),
+                        file_name=f"{'_'.join(selected_herbs_info.keys())}_edges.csv",
+                        mime='text/csv',
+                    )
