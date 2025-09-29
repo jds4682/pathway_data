@@ -33,12 +33,17 @@ HERB_DATA_DIR = r'C:\tg' # 개별 약재 데이터 폴더 경로
 @st.cache_data
 def load_data():
     try:
-        herb_df = load_data('all name.xlsx')
-        ingre_data = load_data('SMIT.xlsx')
+        # pd.read_excel을 사용해 직접 파일을 읽도록 수정
+        herb_df = pd.read_excel(HERB_DB_PATH) 
+        ingre_data = pd.read_excel(OB_SCORE_PATH)
+        
+        # OB Score 필터링
         ingre_data = ingre_data.dropna(subset=['OB_score'], how='any', axis=0)
+        
         return herb_df, ingre_data
+        
     except FileNotFoundError as e:
-        st.error(f"오류: 필수 데이터 파일을 찾을 수 없습니다. 경로를 확인하세요. ({e})")
+        st.error(f"오류: 필수 데이터 파일({e.filename})을 찾을 수 없습니다. 경로를 확인하세요.")
         return None, None
 
 # --- 2. 네트워크 분석 핵심 로직 (사용자 코드 기반 함수화) ---
