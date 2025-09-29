@@ -1,155 +1,146 @@
-# 필요한 추가 import (맨 위에 이미 있으면 중복 안 해도 됩니다)
-import gseapy as gp
-import mygene
-import numpy as np
-import matplotlib.pyplot as plt
-import tempfile
-import os
-from shutil import copyfile
+import streamlit as st
+import pandas as pd
+import requests
+from io import BytesIO
 
-def process_and_run_gsea_gseapy_fix(prescription_name, selected_herbs_info, herb_weights):
-    # 1) 기존 전처리 (same as before) -> py_df
+# --- 1. 초기 설정 및 GitHub 데이터 로딩 함수 ---
+
+st.set_page_config(layout="wide", page_title="GSEA Pre-processing Tool")
+
+@st.cache_data
+def load_excel_data(name):
+    url = f"https://raw.githubusercontent.com/jds4682/pathway_data/main/{name}"
+    try:
+        response = requests.get(url, timeout=15)
+        if response.status_code == 200:
+            return pd.read_excel(BytesIO(response.content))
+        else:
+            st.error(f"GitHub에서 '{name}' 파일을 찾을 수 없습니다.")
+            return None
+    except Exception as e:
+        st.error(f"'{name}' 파일 로딩 중 오류 발생: {e}")
+        return None
+
+@st.cache_data
+def load_herb_csv_data(smhb_code):
+    url = f"https://raw.githubusercontent.com/jds4682/pathway_data/main/{smhb_code}.csv"
+    try:
+        response = requests.get(url, timeout=15)
+        if response.status_code == 200:
+            return pd.read_csv(BytesIO(response.content))
+        else:
+            st.warning(f"GitHub에서 '{smhb_code}.csv' 파일을 찾을 수 없습니다.")
+            return None
+    except requests.exceptions.RequestException:
+        st.warning(f"'{smhb_code}.csv' 파일 로딩 중 네트워크 오류 발생.")
+        return None
+
+@st.cache_data
+def load_initial_data():
+    herb_df = load_excel_data('all name.xlsx')
+    return herb_df
+
+# --- 2. GSEA 전처리 핵심 로직 (수정) ---
+
+def process_for_gsea(prescription_name, selected_herbs_info, herb_weights):
+    
     data_list = []
-    for herb_name, herb_code in selected_herbs_info.items():
+    
+    progress_bar = st.progress(0, text="약재 데이터를 GitHub에서 로딩 및 처리 중입니다...")
+    
+    # selected_herbs_info는 {'한글약재명': 'SMHB코드'} 형태의 딕셔너리
+    # herb_weights는 {'한글약재명': 그람수} 형태의 딕셔너리
+    
+    # --- ▼▼▼ 제공해주신 분석 코드의 의도를 반영한 로직 ▼▼▼ ---
+    for i, (herb_name, herb_code) in enumerate(selected_herbs_info.items()):
+        
         df = load_herb_csv_data(herb_code)
+        
         if df is None or df.empty:
+            st.warning(f"'{herb_name}'({herb_code}) 데이터를 찾을 수 없거나 비어있어 건너뜁니다.")
             continue
+
         df = df[pd.to_numeric(df['P_value'], errors='coerce').notna()]
         df = df[pd.to_numeric(df['Value'], errors='coerce').notna()]
-        weight = herb_weights.get(herb_name, 1.0)
-        for _, row in df.iterrows():
-            data_list.append([herb_code, row['Gene symbol'], float(row['Value']) * weight])
 
+        weight = herb_weights.get(herb_name, 1.0)
+
+        for _, row in df.iterrows():
+            gene = row['Gene symbol']
+            value = float(row['Value'])
+            score = value * weight
+            
+            # --- ★★★ 수정된 부분: herb_name -> herb_code ★★★ ---
+            # 최종 리스트에 한글 약재명 대신 SMHB 코드를 저장합니다.
+            data_list.append([herb_code, gene, score])
+            
+        progress_bar.progress((i + 1) / len(selected_herbs_info))
+    
+    progress_bar.empty()
+    
     if not data_list:
         st.error("처리할 데이터가 없습니다.")
         return None
-    py_df = pd.DataFrame(data_list, columns=['herb', 'GeneSymbol', 'Score'])
 
-    # 2) Aggregate by symbol
-    agg = py_df.groupby('GeneSymbol', as_index=False).agg({'Score': 'sum'})
-    agg['GeneSymbol'] = agg['GeneSymbol'].astype(str).str.strip()
+    # --- ★★★ 수정된 부분: 컬럼 이름을 'Herb' -> 'Herb_ID'로 변경 (선택사항) ★★★ ---
+    # 첫 번째 열의 내용이 ID임을 명확히 하기 위해 컬럼 이름을 변경합니다.
+    output_df = pd.DataFrame(data_list, columns=['Herb_ID', 'GeneSymbol', 'Score'])
 
-    # 3) mygene 매핑: symbol 우선, alias도 탐색
-    mg = mygene.MyGeneInfo()
-    symbols = agg['GeneSymbol'].tolist()
+    return output_df
+
+# --- 3. 웹페이지 UI 구성 ---
+st.title("🌿 GSEA 분석용 전처리 파일 생성기")
+st.info("이 앱은 R에서 GSEA 분석을 수행하기 전에 필요한 `_processed.csv` 파일을 생성합니다.")
+
+herb_df = load_initial_data()
+
+if herb_df is not None:
+    st.header("1. 처방 구성하기")
+    
+    KOREAN_NAME_COLUMN = 'korean name'
+    SMHB_ID_COLUMN = 'SMHB_ID'
+    
     try:
-        mg_res = mg.querymany(symbols, scopes='symbol,alias', fields='symbol,entrezgene', species='human', as_dataframe=True)
-    except Exception as e:
-        st.warning(f"mygene querymany 에러: {e}. SYMBOL 기반으로 그대로 진행합니다.")
-        mg_res = None
+        herb_names = herb_df[KOREAN_NAME_COLUMN].dropna().unique().tolist()
+        selected_herb_names = st.multiselect("분석에 포함할 약재를 선택하세요.", options=herb_names)
+        
+        selected_herbs_info = {}
+        herb_weights = {}
 
-    if isinstance(mg_res, pd.DataFrame):
-        # mg_res index is the original query
-        mg_res = mg_res.reset_index().rename(columns={'query': 'query_symbol'}) if 'query' in mg_res.columns else mg_res.reset_index().rename(columns={'index':'query_symbol'})
-        # prefer canonical 'symbol' returned by mygene; if missing, keep original
-        mapping_df = mg_res[['query_symbol', 'symbol']].drop_duplicates(subset=['query_symbol'])
-        merged = pd.merge(agg, mapping_df, left_on='GeneSymbol', right_on='query_symbol', how='left')
-        merged['gsea_id'] = merged['symbol'].fillna(merged['GeneSymbol']).astype(str).str.upper()
-        # unmapped
-        unmapped = merged[merged['symbol'].isnull()]['GeneSymbol'].unique().tolist()
-    else:
-        merged = agg.copy()
-        merged['gsea_id'] = merged['GeneSymbol'].astype(str).str.upper()
-        unmapped = []
+        if selected_herb_names:
+            st.subheader("용량 입력 (단위: g)")
+            num_columns = 3
+            cols = st.columns(num_columns)
+            
+            for i, name in enumerate(selected_herb_names):
+                with cols[i % num_columns]:
+                    grams = st.number_input(f"{name}", min_value=0.1, value=4.0, step=0.1, key=name)
+                    smhb_id = herb_df[herb_df[KOREAN_NAME_COLUMN] == name][SMHB_ID_COLUMN].iloc[0]
+                    selected_herbs_info[name] = smhb_id
+                    herb_weights[name] = grams
+            
+            st.divider()
+            st.header("2. 분석 및 파일 다운로드")
+            
+            prescription_name_input = st.text_input("저장할 처방의 영문 이름을 입력하세요 (예: My_Prescription):")
+            
+            if st.button("전처리 파일 생성 시작", disabled=(not prescription_name_input)):
+                with st.spinner("파일을 생성 중입니다..."):
+                    
+                    # --- ★★★ 오류 수정: 빠졌던 herb_weights 인자 추가 ★★★ ---
+                    result_df = process_for_gsea(prescription_name_input, selected_herbs_info, herb_weights)
+                    
+                    if result_df is not None:
+                        st.success("파일 생성이 완료되었습니다! 아래에서 결과를 확인하고 다운로드하세요.")
+                        st.subheader("생성된 데이터 미리보기 (상위 10개)")
+                        st.dataframe(result_df.head(10))
+                        
+                        st.download_button(
+                            label=f"📥 {prescription_name_input}_processed.csv 다운로드",
+                            data=result_df.to_csv(index=False).encode('utf-8-sig'),
+                            file_name=f"{prescription_name_input}_processed.csv",
+                            mime='text/csv',
+                        )
 
-    st.info(f"Input genes: {len(agg)}, unmapped (example up to 20): {unmapped[:20]}")
-    # 4) Build ranked Series (symbol uppercase)
-    ranked = merged.groupby('gsea_id', as_index=False).agg({'Score':'sum'}).sort_values('Score', ascending=False)
-    ranked = ranked.set_index('gsea_id')['Score'].astype(float)
-
-    # 5) Tie-breaking: deterministic tiny jitter to make all values unique
-    eps = 1e-9
-    ranked = ranked + (np.arange(len(ranked)) * eps)
-
-    # 6) (디버깅) gene-set overlap 확인 (예: GO_Biological_Process_2021)
-    try:
-        # download library dict (internal gseapy helper)
-        from gseapy.parser import download_library
-        lib_name = 'GO_Biological_Process_2021'
-        libdict = download_library(lib_name, organism='Human')
-        lib_genes = set(sum(libdict.values(), []))
-        overlap = set(ranked.index) & lib_genes
-        st.info(f"Overlap with {lib_name}: {len(overlap)} genes (입력 총 {len(ranked)})")
-    except Exception as e:
-        st.info(f"라이브러리 overlap 체크 실패 (네트워크/내부함수 문제): {e}")
-
-    # 7) Run prerank with threads and relaxed min_size (필요시 조정)
-    tmpdir = tempfile.mkdtemp(prefix='gsea_out_')
-    out_plots = {}
-    try:
-        pre_res_go = gp.prerank(rnk=ranked, gene_sets='GO_Biological_Process_2021',
-                                threads=4, permutation_num=500, outdir=tmpdir,
-                                format='png', seed=123, min_size=5, max_size=2000)
-        res_go = pre_res_go.res2d
-        if res_go is not None and not res_go.empty:
-            # 간단한 dotplot (예시)
-            df_top = res_go.reset_index().head(15)
-            df_top['neglog10fdr'] = -np.log10(df_top['fdr_q-val'].replace(0, np.nextafter(0,1)))
-            plt.figure(figsize=(10,6))
-            sizes = df_top.get('geneset_size', np.ones(len(df_top))).astype(float)
-            plt.scatter(df_top['NES'], df_top['neglog10fdr'], s=(sizes/np.max(sizes))*300 + 20)
-            for i, txt in enumerate(df_top.index):
-                plt.text(df_top['NES'].iloc[i], df_top['neglog10fdr'].iloc[i], df_top['Term'].iloc[i], fontsize=8)
-            plt.xlabel('NES')
-            plt.ylabel('-log10(FDR)')
-            plt.title('GO (BP) top terms')
-            go_dot = os.path.join(tmpdir, 'plot_go_dotplot.png')
-            plt.tight_layout()
-            plt.savefig(go_dot, dpi=150)
-            plt.close()
-            out_plots['plot_go_dotplot.png'] = go_dot
-            # gseaplot for top (if available)
-            try:
-                top_term = res_go.index[0]
-                gp.plot.gseaplot(pre_res_go.ranking, pre_res_go.results[top_term], ofname=os.path.join(tmpdir, 'plot_go_gseaplot.png'))
-                out_plots['plot_go_gseaplot.png'] = os.path.join(tmpdir, 'plot_go_gseaplot.png')
-            except Exception:
-                pass
-    except Exception as e:
-        st.warning(f"GO prerank 수행 중 오류: {e}. (min_size 조정 필요할 수 있음)")
-
-    # 동일 방식으로 KEGG 실행 (필요 시)
-    try:
-        pre_res_kegg = gp.prerank(rnk=ranked, gene_sets='KEGG_2019_Human',
-                                  threads=4, permutation_num=500, outdir=tmpdir,
-                                  format='png', seed=123, min_size=5, max_size=2000)
-        res_kegg = pre_res_kegg.res2d
-        if res_kegg is not None and not res_kegg.empty:
-            df_top = res_kegg.reset_index().head(15)
-            df_top['neglog10fdr'] = -np.log10(df_top['fdr_q-val'].replace(0, np.nextafter(0,1)))
-            plt.figure(figsize=(10,6))
-            sizes = df_top.get('geneset_size', np.ones(len(df_top))).astype(float)
-            plt.scatter(df_top['NES'], df_top['neglog10fdr'], s=(sizes/np.max(sizes))*300 + 20)
-            for i, txt in enumerate(df_top.index):
-                plt.text(df_top['NES'].iloc[i], df_top['neglog10fdr'].iloc[i], df_top['Term'].iloc[i], fontsize=8)
-            plt.xlabel('NES')
-            plt.ylabel('-log10(FDR)')
-            plt.title('KEGG top terms')
-            kegg_dot = os.path.join(tmpdir, 'plot_kegg_dotplot.png')
-            plt.tight_layout()
-            plt.savefig(kegg_dot, dpi=150)
-            plt.close()
-            out_plots['plot_kegg_dotplot.png'] = kegg_dot
-            try:
-                top_term = res_kegg.index[0]
-                gp.plot.gseaplot(pre_res_kegg.ranking, pre_res_kegg.results[top_term], ofname=os.path.join(tmpdir, 'plot_kegg_gseaplot.png'))
-                out_plots['plot_kegg_gseaplot.png'] = os.path.join(tmpdir, 'plot_kegg_gseaplot.png')
-            except Exception:
-                pass
-    except Exception as e:
-        st.warning(f"KEGG prerank 수행 중 오류: {e}. (min_size 조정 필요할 수 있음)")
-
-    if out_plots:
-        # 복사하여 반환
-        final = {}
-        persistent_dir = tempfile.mkdtemp(prefix='gsea_final_')
-        for name, p in out_plots.items():
-            if os.path.exists(p):
-                dest = os.path.join(persistent_dir, name)
-                copyfile(p, dest)
-                final[name] = dest
-        st.success("GSEA (python) 완료")
-        return final
-    else:
-        st.error("분석은 완료되었으나 저장된 플롯이 없습니다. (매핑/파라미터 확인 필요)")
-        return None
+    except KeyError as e:
+        st.error(f"'{e}' 열을 'all name.xlsx' 파일에서 찾을 수 없습니다. 코드의 열 이름을 확인하세요.")
