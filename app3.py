@@ -3,22 +3,19 @@ import pandas as pd
 import networkx as nx
 import matplotlib.pyplot as plt
 import os
-import json
 import requests
 from io import BytesIO
-from statsmodels.stats.multitest import multipletests
 import pickle
 
 # --- 1. 초기 설정 및 GitHub 데이터 로딩 함수 ---
 
 st.set_page_config(layout="wide", page_title="Herbal Prescription Network Analysis")
 
-# --- GitHub 데이터 로딩 함수들 ---
 @st.cache_data
 def load_excel_data(name):
     url = f"https://raw.githubusercontent.com/jds4682/pathway_data/main/{name}"
     try:
-        response = requests.get(url)
+        response = requests.get(url, timeout=15)
         if response.status_code == 200:
             return pd.read_excel(BytesIO(response.content))
         else:
@@ -32,7 +29,7 @@ def load_excel_data(name):
 def load_herb_csv_data(smhb_code):
     url = f"https://raw.githubusercontent.com/jds4682/pathway_data/main/{smhb_code}.csv"
     try:
-        response = requests.get(url)
+        response = requests.get(url, timeout=15)
         if response.status_code == 200:
             return pd.read_csv(BytesIO(response.content))
         else:
@@ -50,6 +47,7 @@ def load_initial_data():
     ingre_data = ingre_data.dropna(subset=['OB_score'], how='any', axis=0)
     return herb_df, ingre_data
 
+# --- 2. 네트워크 분석 핵심 로직 ---
 def run_network_analysis(selected_herbs_info, ingre_data):
     
     t_name = "_".join(selected_herbs_info.keys())
@@ -91,7 +89,6 @@ def run_network_analysis(selected_herbs_info, ingre_data):
         return None, None, None, None
 
     # --- ▼▼▼ 제공해주신 분석 코드 시작 ▼▼▼ ---
-    
     t_name = Target.pop(0)
     node_list = []
     edge_list = []
@@ -104,9 +101,7 @@ def run_network_analysis(selected_herbs_info, ingre_data):
 
     # data shaping
     node_data = pd.DataFrame()
-    node_ID = []
-    node_label = []
-    node_group = []
+    node_ID, node_label, node_group = [], [], []
     for i in range(len(node_list)):
         try:
             node_ID.append(node_list[i][1][4:].strip())
@@ -120,68 +115,54 @@ def run_network_analysis(selected_herbs_info, ingre_data):
     
     edge_data = pd.DataFrame(edge_list, columns=['SourceID', 'TargetID'])
 
-    # OB score가 없는 ingredient 데이터들 제거
+    # OB score 필터링
     st.write("OB Score 기반으로 유효성분 필터링 중...")
     drop_list = []
     valid_ingredients = set(ingre_data['Molecule_name'])
     for i, row in node_data.iterrows():
-        if row['Group'] == 'MM symptom' or row['Group'] == 'TCM symptom':
+        if row['Group'] in ['MM symptom', 'TCM symptom']:
             drop_list.append(i)
         elif row['Group'] == 'ingredient' and row['Label'] not in valid_ingredients:
             drop_list.append(i)
-            
     node_data.drop(list(set(drop_list)), axis=0, inplace=True)
     st.write(f"유효성분 필터링 완료. {len(drop_list)}개의 노드 제거.")
-
-    # --- ★ FDR 필터링 로직은 웹 환경 제약으로 생략 ---
-    # st.warning("주의: 실시간 웹 환경의 제약으로 인해, FDR(q-value) 기반 타겟 필터링은 현재 버전에서 생략되었습니다.")
+    st.warning("주의: 실시간 웹 환경의 제약으로 인해, FDR(q-value) 기반 타겟 필터링은 현재 버전에서 생략되었습니다.")
     
-    # node shaping
+    # 네트워크 생성 및 시각화 (이하 로직은 제공해주신 코드 기반)
     G = nx.Graph()
-    for i, row in node_data.iterrows():
+    for _, row in node_data.iterrows():
         color_map = {'herb': 'orange', 'ingredient': 'green', 'disease': 'yellow', 'target': 'skyblue'}
         G.add_node(row['Label'], ID=row['ID'], Group=row['Group'], color=color_map.get(row['Group'], 'gray'))
-
-    # edge shaping
+    
     disease_label = []
-    for i, row in edge_data.iterrows():
+    for _, row in edge_data.iterrows():
         try:
-            source_name = node_data[node_data['ID'] == row['SourceID']]['Label'].iloc[0]
-            destination_name = node_data[node_data['ID'] == row['TargetID']]['Label'].iloc[0]
+            source_name = node_data.loc[node_data['ID'] == row['SourceID'], 'Label'].iloc[0]
+            destination_name = node_data.loc[node_data['ID'] == row['TargetID'], 'Label'].iloc[0]
             G.add_edge(source_name, destination_name)
-            if row['TargetID'][:4] == 'SMDE':
+            if row['TargetID'] and row['TargetID'].startswith('SMDE'):
                 disease_label.append(destination_name)
         except IndexError:
             continue
-    
-    # 질병 빈도 계산
-    disease_series = pd.Series(disease_label)
-    disease_table = disease_series.value_counts().reset_index()
+
+    disease_table = pd.Series(disease_label).value_counts().reset_index()
     disease_table.columns = ['Disease', 'Count']
 
-    # 노드 분류
-    node_groups = {'herb': [], 'ingredient': [], 'target': [], 'disease': []}
-    for node, data in G.nodes(data=True):
-        group = data.get('Group')
-        if group in node_groups:
-            node_groups[group].append(node)
-
-    # 시각화
+    node_groups = {g: [n for n, d in G.nodes(data=True) if d.get('Group') == g] for g in ['herb', 'ingredient', 'target', 'disease']}
+    
     st.write("네트워크 시각화 생성 중...")
     fig, ax = plt.subplots(figsize=(14, 15))
     shells = [node_groups['herb'], node_groups['ingredient'], node_groups['target'], node_groups['disease']]
     pos = nx.shell_layout(G, shells)
     
-    nx.draw_networkx_nodes(G, pos, nodelist=node_groups['herb'], node_color='#ff8800', node_size=100, label='Herb', ax=ax)
-    nx.draw_networkx_nodes(G, pos, nodelist=node_groups['ingredient'], node_color='#00d200', node_size=10, label='Ingredient', ax=ax)
-    nx.draw_networkx_nodes(G, pos, nodelist=node_groups['target'], node_color='#ff3367', node_size=10, label='Target', ax=ax)
-    nx.draw_networkx_nodes(G, pos, nodelist=node_groups['disease'], node_color='#6600ff', node_size=10, label='Disease', ax=ax)
-    nx.draw_networkx_edges(G, pos, width=0.1, ax=ax)
+    nx.draw_networkx_nodes(G, pos, nodelist=node_groups['herb'], node_color='#ff8800', node_size=150, label='Herb', ax=ax)
+    nx.draw_networkx_nodes(G, pos, nodelist=node_groups['ingredient'], node_color='#00d200', node_size=20, label='Ingredient', ax=ax)
+    nx.draw_networkx_nodes(G, pos, nodelist=node_groups['target'], node_color='#ff3367', node_size=20, label='Target', ax=ax)
+    nx.draw_networkx_nodes(G, pos, nodelist=node_groups['disease'], node_color='#6600ff', node_size=20, label='Disease', ax=ax)
+    nx.draw_networkx_edges(G, pos, width=0.2, alpha=0.5, ax=ax)
     
     ax.legend(scatterpoints=1)
     ax.set_title(t_name.replace("_", " + "), fontname='DejaVu Sans', fontsize=16)
-
-    # --- ▲▲▲ 제공해주신 분석 코드 종료 ▲▲▲ ---
     
     return fig, disease_table.head(20), node_data, edge_data
 
@@ -193,14 +174,13 @@ herb_df, ingre_data = load_initial_data()
 if herb_df is not None:
     st.header("1. 약재 선택 및 용량 입력")
     herb_names = herb_df['korean name'].dropna().unique().tolist()
-    selected_herb_names = st.multiselect("분석할 약재를 선택하세요.", options=herb_names)
+    selected_herb_names = st.multoselect("분석할 약재를 선택하세요.", options=herb_names)
     
     selected_herbs_info = {}
     if selected_herb_names:
         cols = st.columns(len(selected_herb_names))
         for i, name in enumerate(selected_herb_names):
             with cols[i]:
-                # 용량 입력 UI는 현재 분석 로직에서 사용되지 않으므로, 참고용으로만 둡니다.
                 grams = st.number_input(f"{name} (g)", min_value=0.1, value=4.0, step=0.1, key=name)
                 smhb_id = herb_df[herb_df['korean name'] == name]['SMHB_ID'].iloc[0]
                 selected_herbs_info[name] = smhb_id
@@ -217,7 +197,6 @@ if herb_df is not None:
                 st.subheader("상위 20개 연관 질병")
                 st.dataframe(disease_df)
 
-                # --- 결과 다운로드 버튼 ---
                 st.subheader("결과 데이터 다운로드")
                 col1, col2 = st.columns(2)
                 with col1:
