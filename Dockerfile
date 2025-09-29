@@ -41,5 +41,5 @@ COPY . .
 
 # 9. 앱 실행 명령어
 EXPOSE 8501
-CMD ["streamlit", "run", "app.py"]
+CMD ["streamlit", "run", "app3.py"]
 
