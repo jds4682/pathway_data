@@ -97,44 +97,115 @@ def run_network_analysis(selected_herbs_info, ingre_data):
     # Step 2: 각 약재의 DataFrame을 순회하며 node_list와 edge_list 생성
     # 이 부분이 CSV 형식에 맞춰 재구성된 핵심 파싱 로직입니다.
     for herb_df in Target_DataFrames:
-        for index, row in herb_df.iterrows():
-            group = row.get('group')
-            if group == 'nodes':
-                # info 열의 값이 문자열인지 확인 후 split
-                if isinstance(row.get('info'), str):
-                    node_list.append(row['info'].split("<br>"))
-            elif group == 'edges':
-                edge_list.append([row.get('source'), row.get('target')])
+        for i in range(len(herb_df)):
+            if herb_df[i]['group'] == 'nodes' :
+                node_list.append(herb_df[i]['data']['info'].split("<br>"))
+            if herb_df[i]['group'] == 'edges' :
+                edge_list.append([herb_df[i]['data']['source'],  herb_df[i]['data']['target']])
 
     # Step 3: 이하 제공해주신 코드 로직을 기반으로 데이터 가공 및 분석 수행
     # data shaping
     node_data = pd.DataFrame()
     node_ID, node_label, node_group = [], [], []
-    for item in node_list:
-        try:
-            node_group.append(item[0])
-            node_ID.append(item[1][4:].strip())
-            node_label.append(item[2][6:])
-        except (IndexError, TypeError):
-            continue
+    SourceID = []
+    TargetID = []
+    for i in range(len(node_list)) :
+        node_ID.append(node_list[i][1][4:].strip())
+        node_label.append(node_list[i][2][6:])
+        node_group.append(node_list[i][0])
+        
     node_data['ID'] = node_ID
-    node_data['Label'] = node_label
+    node_data['Label'] =  node_label
     node_data['Group'] = node_group
     
-    edge_data = pd.DataFrame(edge_list, columns=['SourceID', 'TargetID'])
-
-    # OB score 필터링
-    st.info("OB Score 기반으로 유효성분 필터링 중...")
+    for i in range(len(edge_list)) :
+        SourceID.append(edge_list[i][0])
+        TargetID.append(edge_list[i][1])
+        
+    edge_data['SourceID'] = SourceID
+    edge_data['TargetID'] = TargetID
+    #herb origin info
+    origin_list = []
+    
+    for i in range(len(node_data)) :
+        if node_data.iloc[i]['ID'][:4] == 'SMHB' :
+            name = node_data.iloc[i]['ID']
+        origin_list.append(name)
+    
+    node_data['origin'] = origin_list
+    
+    #OB score loading
+    ingre_data = load_excel_data('SMIT.xlsx')
+    
+    #OB score null data deletion 
+    ingre_data = ingre_data.dropna(subset=['OB_score'], how='any', axis=0)
+    
+    
+    
+    #OB score가 없는 ingredient데이터들 제거
     drop_list = []
-    valid_ingredients = set(ingre_data['Molecule_name'])
-    for i, row in node_data.iterrows():
-        if row['Group'] in ['MM symptom', 'TCM symptom']:
+    
+    for i in tqdm(range(len(node_data))) : 
+        if node_data.iloc[i]['Group'] == 'MM symptom' : #불필요데이터제거
             drop_list.append(i)
-        elif row['Group'] == 'ingredient' and row['Label'] not in valid_ingredients:
+        if node_data.iloc[i]['Group'] == 'TCM symptom' : #불필요데이터제거
             drop_list.append(i)
-    node_data.drop(list(set(drop_list)), axis=0, inplace=True)
+        if node_data.iloc[i]['Group'] != 'ingredient' : 
+            continue
+        if node_data.iloc[i]['Group'] == 'ingredient' :
+            if node_data.iloc[i]['Label'] not in  list(ingre_data['Molecule_name']) :
+                drop_list.append(i)
+
+    
+    # 1단계: 모든 파일에서 p-value 수집하기
+    all_p_values_data = []
+    print("1/3: 모든 파일에서 P-value 수집 중...")
+    for p in smhb_codes:
+        csv_data = load_herb_csv_data(p)
+        
+        # 파일 원본(origin) 정보 추가
+        csv_data['origin'] = p[:9] 
+        
+        all_p_values_data.append(csv_data[['origin', 'Target id', 'P_value']])
+    
+    # 하나의 데이터프레임으로 합치기
+    all_tests_df = pd.concat(all_p_values_data, ignore_index=True)
+    all_tests_df.dropna(subset=['P_value'], inplace=True) # P_value가 없는 경우 제거
+    
+    # 2단계: FDR 보정 적용하기
+    print("2/3: FDR 보정 적용 중...")
+    # multipletests 함수는 p-value 리스트를 받아 q-value 리스트를 반환합니다.
+    # rejected: (True/False), q_values: 보정된 p-value, ...
+    rejected, q_values, _, _ = multipletests(all_tests_df['P_value'], alpha=0.05, method='fdr_bh')
+    all_tests_df['q_value'] = q_values
+    
+    # 3단계: 유의미한 타겟 목록 만들기 (q-value < 0.05)
+    significant_df = all_tests_df[all_tests_df['q_value'] < 0.05]
+    
+    # 빠른 조회를 위해 (origin, Target id) 쌍을 set 형태로 변환
+    significant_targets_set = set(zip(significant_df['origin'], significant_df['Target id']))
+    print(f"총 {len(all_tests_df)}개의 테스트 중 {len(significant_targets_set)}개의 유의미한 타겟을 발견했습니다.")
+    
+    
+    # 4단계: 최종 노드 데이터 필터링하기
+    print("3/3: 유의미하지 않은 Target 노드 제거 중...")
+    # 기존 drop_list는 그대로 사용하거나, 여기서 새로 만들어도 됩니다.
+    # drop_list = [] # 새로 시작할 경우 주석 해제
+    
+    # node_data의 target 들 중, significant_targets_set에 없는 것들을 drop_list에 추가
+    for index, row in tqdm(node_data.iterrows(), total=len(node_data)):
+        if row['Group'] == 'target':
+            # (origin, ID) 쌍이 유의미한 목록에 없으면 제거 대상에 추가
+            if (row['origin'], row['ID']) not in significant_targets_set:
+                drop_list.append(index)
+    
+    # 중복된 인덱스 제거 후 최종적으로 노드 제거
+    final_drop_indices = sorted(list(set(drop_list)))
+    print(f"{len(final_drop_indices)}개의 노드를 제거합니다.")
+    node_data.drop(final_drop_indices, axis=0, inplace=True)
+    
     st.info(f"유효성분 필터링 완료. {len(drop_list)}개의 노드 제거.")
-    st.warning("주의: 실시간 웹 환경의 제약으로 인해, FDR(q-value) 기반 타겟 필터링은 현재 버전에서 생략되었습니다.")
+    
     
     # 네트워크 생성 및 시각화
     G = nx.Graph()
