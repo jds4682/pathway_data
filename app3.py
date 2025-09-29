@@ -93,7 +93,7 @@ def run_network_analysis(selected_herbs_info, ingre_data):
     st.info("로드된 CSV 데이터를 파싱하여 Node와 Edge 목록을 생성합니다...")
     node_list = []
     edge_list = []
-
+    st.info("shape_ clear")
     # Step 2: 각 약재의 DataFrame을 순회하며 node_list와 edge_list 생성
     # 이 부분이 CSV 형식에 맞춰 재구성된 핵심 파싱 로직입니다.
     for herb_df in Target_DataFrames:
