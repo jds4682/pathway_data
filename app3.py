@@ -27,6 +27,7 @@ def load_excel_data(name):
 
 @st.cache_data
 def load_herb_csv_data(smhb_code):
+    # --- ★★★ URL 수정: /tg/ 경로 제거 ★★★ ---
     url = f"https://raw.githubusercontent.com/jds4682/pathway_data/main/{smhb_code}.csv"
     try:
         response = requests.get(url, timeout=15)
@@ -59,10 +60,7 @@ def run_network_analysis(selected_herbs_info, ingre_data):
     for i, code in enumerate(smhb_codes):
         herb_df_single = load_herb_csv_data(code)
         
-        # --- ★★★ 오류 수정 부분 ★★★ ---
-        # if herb_data: -> if herb_df_single is not None and not herb_df_single.empty:
         if herb_df_single is not None and not herb_df_single.empty:
-            # CSV를 JSON 유사 구조(딕셔너리 리스트)로 변환
             herb_json_structure = []
             for _, row in herb_df_single.iterrows():
                 group = row.get('group')
@@ -88,16 +86,19 @@ def run_network_analysis(selected_herbs_info, ingre_data):
         st.error("선택된 약재에 대한 유효 데이터를 불러오지 못했습니다.")
         return None, None, None, None
 
-    # --- ▼▼▼ 제공해주신 분석 코드 시작 ▼▼▼ ---
+    # --- 분석 코드 시작 ---
     t_name = Target.pop(0)
     node_list = []
     edge_list = []
     for herb in Target:
         for i in range(len(herb)):
-            if herb[i]['group'] == 'nodes':
-                node_list.append(herb[i]['data']['info'].split("<br>"))
-            if herb[i]['group'] == 'edges':
-                edge_list.append([herb[i]['data']['source'], herb[i]['data']['target']])
+            # get() 메소드를 사용하여 키가 없는 경우에도 오류 방지
+            group = herb[i].get('group')
+            data = herb[i].get('data', {})
+            if group == 'nodes':
+                node_list.append(data.get('info', '').split("<br>"))
+            if group == 'edges':
+                edge_list.append([data.get('source'), data.get('target')])
 
     # data shaping
     node_data = pd.DataFrame()
@@ -128,7 +129,7 @@ def run_network_analysis(selected_herbs_info, ingre_data):
     st.write(f"유효성분 필터링 완료. {len(drop_list)}개의 노드 제거.")
     st.warning("주의: 실시간 웹 환경의 제약으로 인해, FDR(q-value) 기반 타겟 필터링은 현재 버전에서 생략되었습니다.")
     
-    # 네트워크 생성 및 시각화 (이하 로직은 제공해주신 코드 기반)
+    # 네트워크 생성 및 시각화
     G = nx.Graph()
     for _, row in node_data.iterrows():
         color_map = {'herb': 'orange', 'ingredient': 'green', 'disease': 'yellow', 'target': 'skyblue'}
@@ -174,7 +175,9 @@ herb_df, ingre_data = load_initial_data()
 if herb_df is not None:
     st.header("1. 약재 선택 및 용량 입력")
     herb_names = herb_df['korean name'].dropna().unique().tolist()
-    selected_herb_names = st.multoselect("분석할 약재를 선택하세요.", options=herb_names)
+    
+    # --- ★★★ 오류 수정: st.multoselect -> st.multiselect (오타 수정) ★★★ ---
+    selected_herb_names = st.multiselect("분석할 약재를 선택하세요.", options=herb_names)
     
     selected_herbs_info = {}
     if selected_herb_names:
@@ -182,6 +185,7 @@ if herb_df is not None:
         for i, name in enumerate(selected_herb_names):
             with cols[i]:
                 grams = st.number_input(f"{name} (g)", min_value=0.1, value=4.0, step=0.1, key=name)
+                # 'SMHB ID'와 같이 공백이 있는 열 이름은 ['SMHB ID']로 접근해야 합니다.
                 smhb_id = herb_df[herb_df['korean name'] == name]['SMHB_ID'].iloc[0]
                 selected_herbs_info[name] = smhb_id
     
@@ -209,7 +213,7 @@ if herb_df is not None:
                 with col2:
                     st.download_button(
                         label="Edge 데이터 다운로드 (CSV)",
-                        data=edge_df.to_csv(index=False).encode('utf-8-sig'),
+                        data=edge_df.to_csv(index=False).encode('utf--8-sig'),
                         file_name=f"{'_'.join(selected_herbs_info.keys())}_edges.csv",
                         mime='text/csv',
                     )
