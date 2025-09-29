@@ -136,7 +136,7 @@ if herb_df is not None:
         for i, name in enumerate(selected_herb_names):
             with cols[i]:
                 grams = st.number_input(f"{name} (g)", min_value=0.1, value=4.0, step=0.1, key=name)
-                smhb_id = herb_df[herb_df['약재명 (Korean Name)'] == name]['SMHB ID'].iloc[0]
+                smhb_id = herb_df[herb_df['korean name'] == name]['SMHB ID'].iloc[0]
                 selected_herbs_with_grams[name] = smhb_id
     
     st.header("2. 분석 실행")
