@@ -72,10 +72,14 @@ def process_and_run_gsea_rpy2(prescription_name, selected_herbs_info, herb_weigh
 
     py_df = pd.DataFrame(data_list, columns=['herb', 'GeneSymbol', 'Score'])
     
-  try:
+  st.info("R 분석 환경을 설정하고 데이터를 전달합니다...")
+    try:
+        # --- ★★★ rpy2 버전 변경에 따른 수정 ★★★ ---
+        # with 구문을 사용하여 데이터 변환 컨텍스트를 관리합니다.
         with conversion.localconverter(robjects.default_converter + pandas2ri.converter):
-        r_df = robjects.conversion.py2rpy(py_df)
-    # --- ★★★ 수정 끝 ★★★ ---
+            r_df = robjects.conversion.py2rpy(py_df)
+        # --- ★★★ 수정 끝 ★★★ ---
+
 
         # R 코드를 Python의 여러 줄 문자열로 정의
         r_code = """
