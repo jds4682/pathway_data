@@ -157,9 +157,50 @@ def run_network_analysis(selected_herbs_info, ingre_data):
 
 
 # --- 3. 웹페이지 UI 구성 ---
-# (이하 UI 코드는 이전과 동일)
 st.title("🌿 천연물 처방 네트워크 분석기 (GitHub-Powered)")
+
 herb_df, ingre_data = load_initial_data()
+
 if herb_df is not None:
-    # ... UI 코드 ...
-    # (이하 생략)
+    st.header("1. 약재 선택")
+    
+    # 'all name.xlsx' 파일의 실제 열 이름을 확인 후 수정 필요
+    KOREAN_NAME_COLUMN = 'korean name'
+    SMHB_ID_COLUMN = 'SMHB_ID'
+    
+    try:
+        herb_names = herb_df[KOREAN_NAME_COLUMN].dropna().unique().tolist()
+        selected_herb_names = st.multiselect("분석할 약재를 선택하세요.", options=herb_names)
+        
+        selected_herbs_info = {name: herb_df[herb_df[KOREAN_NAME_COLUMN] == name][SMHB_ID_COLUMN].iloc[0] for name in selected_herb_names}
+    
+        st.header("2. 분석 실행")
+        if st.button("네트워크 분석 시작", disabled=(not selected_herb_names)):
+            with st.spinner("분석을 실행합니다. 약재 수에 따라 시간이 걸릴 수 있습니다..."):
+                fig, disease_df, node_df, edge_df = run_network_analysis(selected_herbs_info, ingre_data)
+                
+                if fig and disease_df is not None:
+                    st.header("3. 분석 결과")
+                    st.pyplot(fig)
+                    
+                    st.subheader("상위 20개 연관 질병")
+                    st.dataframe(disease_df)
+    
+                    st.subheader("결과 데이터 다운로드")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.download_button(
+                            label="Node 데이터 다운로드 (CSV)",
+                            data=node_df.to_csv(index=False).encode('utf-8-sig'),
+                            file_name=f"{'_'.join(selected_herbs_info.keys())}_nodes.csv",
+                            mime='text/csv',
+                        )
+                    with col2:
+                        st.download_button(
+                            label="Edge 데이터 다운로드 (CSV)",
+                            data=edge_df.to_csv(index=False).encode('utf-8-sig'),
+                            file_name=f"{'_'.join(selected_herbs_info.keys())}_edges.csv",
+                            mime='text/csv',
+                        )
+    except KeyError as e:
+        st.error(f"'{e}' 열을 'all name.xlsx' 파일에서 찾을 수 없습니다. 코드의 열 이름을 확인하세요.")
