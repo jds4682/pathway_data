@@ -72,8 +72,8 @@ def process_and_run_gsea_rpy2(prescription_name, selected_herbs_info, herb_weigh
 
     py_df = pd.DataFrame(data_list, columns=['herb', 'GeneSymbol', 'Score'])
     
-  try:
-    with conversion.localconverter(robjects.default_converter + pandas2ri.converter):
+      try:
+        with conversion.localconverter(robjects.default_converter + pandas2ri.converter):
         r_df = robjects.conversion.py2rpy(py_df)
     # --- ★★★ 수정 끝 ★★★ ---
 
