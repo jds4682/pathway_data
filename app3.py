@@ -52,21 +52,40 @@ def run_network_analysis(selected_herbs_info, ingre_data):
     
     t_name = "_".join(selected_herbs_info.keys())
     
+    # --- ★★★ 디버깅 코드 추가 시작 ★★★ ---
+    st.subheader("🛠️ 데이터 로딩 상태 (디버깅)")
+    # 로그 메시지를 담을 컨테이너 생성
+    log_container = st.container(border=True)
+    # --- ★★★ 디버깅 코드 추가 끝 ★★★ ---
+
     # Step 1: 사용자가 선택한 약재의 CSV 파일들을 DataFrame 리스트로 로딩
     Target_DataFrames = []
     progress_bar = st.progress(0, text="약재 데이터를 GitHub에서 로딩 중입니다...")
     smhb_codes = list(selected_herbs_info.values())
-    print(smhb_codes)
     
     for i, code in enumerate(smhb_codes):
+        # --- ★★★ 디버깅 코드 추가 시작 ★★★ ---
+        log_container.write(f"🔄 `{code}` 파일 로딩 시도 중...")
+        # --- ★★★ 디버깅 코드 추가 끝 ★★★ ---
+
         herb_df_single = load_herb_csv_data(code)
+        
         if herb_df_single is not None and not herb_df_single.empty:
+            # --- ★★★ 디버깅 코드 추가 시작 ★★★ ---
+            log_container.success(f"✅ 성공: `{code}` 파일 로드 완료. (총 {len(herb_df_single)} 행)")
+            # --- ★★★ 디버깅 코드 추가 끝 ★★★ ---
             Target_DataFrames.append(herb_df_single)
+        else:
+            # --- ★★★ 디버깅 코드 추가 시작 ★★★ ---
+            log_container.error(f"❌ 실패: `{code}` 파일 로드 실패. GitHub에 파일이 없거나 내용이 비어있을 수 있습니다.")
+            # --- ★★★ 디버깅 코드 추가 끝 ★★★ ---
+        
         progress_bar.progress((i + 1) / len(smhb_codes))
+
     progress_bar.empty()
 
     if not Target_DataFrames:
-        st.error("선택된 약재에 대한 유효 데이터를 불러오지 못했습니다.")
+        st.error("선택된 약재에 대한 유효 데이터를 불러오지 못했습니다. 위 로그를 확인해주세요.")
         return None, None, None, None
 
     # --- ▼▼▼ 제공해주신 분석 코드의 '의도'를 CSV(DataFrame)에 맞게 구현 ▼▼▼ ---
