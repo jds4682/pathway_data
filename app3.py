@@ -293,5 +293,5 @@ if herb_df is not None:
                             file_name=f"{'_'.join(selected_herbs_info.keys())}_edges.csv",
                             mime='text/csv',
                         )
-    #except KeyError as e:
-       # st.error(f"'{e}' 열을 'all name.xlsx' 파일에서 찾을 수 없습니다. 코드의 열 이름을 확인하세요.")
+    except KeyError as e:
+       st.error(f"'{e}' 열을 'all name.xlsx' 파일에서 찾을 수 없습니다. 코드의 열 이름을 확인하세요.")
