@@ -5,8 +5,6 @@ FROM python:3.9-slim
 WORKDIR /app
 
 # 3. 시스템 패키지 설치 (R 및 데이터 과학용 필수 라이브러리)
-# ★★★ R 패키지 컴파일에 필요한 라이브러리들을 대거 추가하여 안정성 확보 ★★★
-# g++, make, libsqlite3-dev 등 R 패키지 빌드에 필수적인 시스템 도구 추가
 RUN apt-get update && apt-get install -y --no-install-recommends \
     r-base \
     r-base-dev \
@@ -22,7 +20,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unixodbc-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# 4. R 라이브러리 경로를 영구적인 환경 변수로 설정
+# --- ★★★ 수정된 부분 ★★★ ---
+# 4. R 설치 경로를 영구적인 환경 변수로 설정
+#    이것이 pip가 rpy2를 빌드할 때 R을 찾을 수 있게 해주는 핵심입니다.
+ENV R_HOME=/usr/lib/R
+# R 라이브러리 경로도 함께 설정
 ENV R_LIBS_USER=/app/r_libs
 
 # 5. R 패키지를 설치할 폴더를 미리 생성하고 권한 부여
@@ -41,5 +43,5 @@ COPY . .
 
 # 9. 앱 실행 명령어
 EXPOSE 8501
-CMD ["streamlit", "run", "app3.py"]
+CMD ["streamlit", "run", "app.py"]
 
