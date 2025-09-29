@@ -86,6 +86,28 @@ def process_and_run_gsea_rpy2(prescription_name, selected_herbs_info, herb_weigh
 
         # R 코드를 Python의 여러 줄 문자열로 정의
         r_code = """
+        # --- R 패키지 자동 설치 및 로드 ---
+        # 사용자 라이브러리 경로 설정 (쓰기 권한 문제 해결)
+        user_lib <- Sys.getenv("R_LIBS_USER")
+        if (!dir.exists(user_lib)) {
+          dir.create(user_lib, recursive = TRUE)
+        }
+        .libPaths(user_lib)
+
+        # 패키지 설치 함수 정의
+        install_if_missing <- function(pkg, repo = "CRAN") {
+          if (!requireNamespace(pkg, quietly = TRUE)) {
+            message(paste("Installing", pkg, "..."))
+            if (repo == "Bioc") {
+              if (!requireNamespace("BiocManager", quietly = TRUE)) {
+                install.packages("BiocManager", repos="https://cloud.r-project.org/")
+              }
+              BiocManager::install(pkg, update=FALSE, ask=FALSE)
+            } else {
+              install.packages(pkg, repos = "https://cloud.r-project.org/")
+            }
+          }
+        }
 
         # 필수 패키지 설치
         install_if_missing("clusterProfiler", "Bioc")
