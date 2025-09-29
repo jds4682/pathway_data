@@ -8,3 +8,4 @@ pandas
 numpy
 statsmodels
 tqdm
+rpy
