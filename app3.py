@@ -86,83 +86,83 @@ def process_and_run_gsea_rpy2(prescription_name, selected_herbs_info, herb_weigh
 
         # R 코드를 Python의 여러 줄 문자열로 정의
         r_code = """
-        # Function to install packages if they are not already installed
-        install_if_missing <- function(pkg, repo = "CRAN") {
-          if (!requireNamespace(pkg, quietly = TRUE)) {
-            message(paste("Installing", pkg, "..."))
-            if (repo == "Bioc") {
-              if (!requireNamespace("BiocManager", quietly = TRUE)) {
-                install.packages("BiocManager")
-              }
-              BiocManager::install(pkg, update=FALSE, ask=FALSE)
-            } else {
-              install.packages(pkg, repos = "https://cloud.r-project.org/")
-            }
-          }
-        }
 
-        # Install required packages
+        # 필수 패키지 설치
         install_if_missing("clusterProfiler", "Bioc")
         install_if_missing("org.Hs.eg.db", "Bioc")
         install_if_missing("enrichplot", "Bioc")
         install_if_missing("dplyr", "CRAN")
         install_if_missing("ggplot2", "CRAN")
+        #라이브러리로드
+        library(clusterProfiler)
+        library(org.Hs.eg.db)
+        library(enrichplot)
+        library(dplyr)
+        library(ggplot2)
 
-        # Load libraries
-        suppressPackageStartupMessages(library(clusterProfiler))
-        suppressPackageStartupMessages(library(org.Hs.eg.db))
-        suppressPackageStartupMessages(library(enrichplot))
-        suppressPackageStartupMessages(library(dplyr))
-        suppressPackageStartupMessages(library(ggplot2))
-
-        # Main analysis function
+        # Python으로부터 R DataFrame과 출력 폴더 경로를 받는 함수 정의
         run_gsea_in_r <- function(gene_data_df, output_dir) {
             
+            # --- 데이터 준비 ---
             aggregated_gene_data <- gene_data_df %>%
               group_by(GeneSymbol) %>%
               summarise(TotalScore = sum(Score, na.rm = TRUE)) %>%
               as.data.frame()
 
-            tryCatch({
-                ids <- bitr(aggregated_gene_data$GeneSymbol, fromType="SYMBOL", toType="ENTREZID", OrgDb="org.Hs.eg.db", drop = FALSE)
-                
-                gene_data_merged <- merge(aggregated_gene_data, ids, by.x="GeneSymbol", by.y="SYMBOL", all.x = TRUE)
-                gene_data_final <- gene_data_merged %>% filter(!is.na(ENTREZID))
-                
-                geneList <- gene_data_final$TotalScore
-                names(geneList) <- gene_data_final$ENTREZID
-                geneList <- sort(geneList, decreasing = TRUE)
-                geneList <- geneList[!duplicated(names(geneList))]
-                
-                if (length(geneList) == 0) {
-                    print("No valid genes left after ID conversion.")
-                    return()
-                }
+            ids <- bitr(aggregated_gene_data$GeneSymbol, fromType="SYMBOL", toType="ENTREZID", OrgDb="org.Hs.eg.db", drop = FALSE)
+            
+            gene_data_merged <- merge(aggregated_gene_data, ids, by.x="GeneSymbol", by.y="SYMBOL", all.x = TRUE)
+            gene_data_final <- gene_data_merged %>% filter(!is.na(ENTREZID))
 
-                # Run GSEA for GO
-                gse_go_results <- gseGO(geneList=geneList, OrgDb=org.Hs.eg.db, ont="BP", minGSSize=10, maxGSSize=500, pvalueCutoff=0.05, verbose=FALSE, scoreType="pos")
-                if (!is.null(gse_go_results) && nrow(as.data.frame(gse_go_results)) > 0) {
-                    p1 <- dotplot(gse_go_results, showCategory=15)
-                    ggsave(file.path(output_dir, "plot_go_dotplot.png"), plot = p1, width=10, height=8)
-                    p2 <- ridgeplot(gse_go_results, showCategory=15)
-                    ggsave(file.path(output_dir, "plot_go_ridgeplot.png"), plot = p2, width=10, height=8)
-                    p3 <- gseaplot2(gse_go_results, geneSetID = 1:min(3, nrow(as.data.frame(gse_go_results))))
-                    ggsave(file.path(output_dir, "plot_go_gseaplot.png"), plot = p3, width=10, height=8)
-                }
+            geneList <- gene_data_final$TotalScore
+            names(geneList) <- gene_data_final$ENTREZID
+            geneList <- sort(geneList, decreasing = TRUE)
+            geneList <- geneList[!duplicated(names(geneList))]
 
-                # Run GSEA for KEGG
-                gse_kegg_results <- gseKEGG(geneList=geneList, organism='hsa', minGSSize=10, maxGSSize=500, pvalueCutoff=0.05, verbose=FALSE, scoreType="pos")
-                if (!is.null(gse_kegg_results) && nrow(as.data.frame(gse_kegg_results)) > 0) {
-                    p4 <- dotplot(gse_kegg_results, showCategory=15)
-                    ggsave(file.path(output_dir, "plot_kegg_dotplot.png"), plot = p4, width=10, height=8)
-                    p5 <- ridgeplot(gse_kegg_results, showCategory=15)
-                    ggsave(file.path(output_dir, "plot_kegg_ridgeplot.png"), plot = p5, width=10, height=8)
-                    p6 <- gseaplot2(gse_kegg_results, geneSetID = 1:min(3, nrow(as.data.frame(gse_kegg_results))))
-                    ggsave(file.path(output_dir, "plot_kegg_gseaplot.png"), plot = p6, width=10, height=8)
-                }
-            }, error = function(e) {
-                print(paste("An error occurred during GSEA analysis:", e$message))
-            })
+            if (length(geneList) == 0) {
+              print("ID 변환 후 유효한 유전자가 없습니다.")
+              return(NULL)
+            }
+            
+            # --- GSEA 분석 실행 ---
+            print("GO 분석을 시작합니다.")
+            gse_go_results <- tryCatch({
+              gseGO(geneList=geneList, OrgDb=org.Hs.eg.db, ont="BP", minGSSize=10, maxGSSize=500, pvalueCutoff=0.05, verbose=FALSE, scoreType="pos")
+            }, error = function(e) { print("gseGO 분석 중 에러 발생."); return(NULL) })
+
+            print("KEGG 분석을 시작합니다.")
+            gse_kegg_results <- tryCatch({
+              gseKEGG(geneList=geneList, organism='hsa', minGSSize=10, maxGSSize=500, pvalueCutoff=0.05, verbose=FALSE, scoreType="pos")
+            }, error = function(e) { print("gseKEGG 분석 중 에러 발생."); return(NULL) })
+
+            # --- 결과 플롯 저장 ---
+            if (!is.null(gse_go_results) && nrow(as.data.frame(gse_go_results)) > 0) {
+              print("GO 결과 플롯을 저장합니다.")
+              go_df <- as.data.frame(gse_go_results)
+              num_results_go <- nrow(go_df)
+              
+              p1 <- dotplot(gse_go_results, showCategory = min(15, num_results_go))
+              ggsave(file.path(output_dir, "plot_go_dotplot.png"), plot = p1, width=10, height=8, dpi=150)
+              p2 <- ridgeplot(gse_go_results, showCategory = min(15, num_results_go))
+              ggsave(file.path(output_dir, "plot_go_ridgeplot.png"), plot = p2, width=10, height=8, dpi=150)
+              p3 <- gseaplot2(gse_go_results, geneSetID = 1:min(3, num_results_go))
+              ggsave(file.path(output_dir, "plot_go_gseaplot.png"), plot = p3, width=10, height=8, dpi=150)
+            }
+
+            if (!is.null(gse_kegg_results) && nrow(as.data.frame(gse_kegg_results)) > 0) {
+              print("KEGG 결과 플롯을 저장합니다.")
+              kegg_df <- as.data.frame(gse_kegg_results)
+              num_results_kegg <- nrow(kegg_df)
+              
+              p4 <- dotplot(gse_kegg_results, showCategory = min(15, num_results_kegg))
+              ggsave(file.path(output_dir, "plot_kegg_dotplot.png"), plot = p4, width=10, height=8, dpi=150)
+              p5 <- ridgeplot(gse_kegg_results, showCategory = min(15, num_results_kegg))
+              ggsave(file.path(output_dir, "plot_kegg_ridgeplot.png"), plot = p5, width=10, height=8, dpi=150)
+              p6 <- gseaplot2(gse_kegg_results, geneSetID = 1:min(3, num_results_kegg))
+              ggsave(file.path(output_dir, "plot_kegg_gseaplot.png"), plot = p6, width=10, height=8, dpi=150)
+            }
+            
+            return("분석 완료")
         }
         """
 
