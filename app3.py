@@ -56,6 +56,7 @@ def run_network_analysis(selected_herbs_info, ingre_data):
     Target_DataFrames = []
     progress_bar = st.progress(0, text="약재 데이터를 GitHub에서 로딩 중입니다...")
     smhb_codes = list(selected_herbs_info.values())
+    print(smhb_codes)
     
     for i, code in enumerate(smhb_codes):
         herb_df_single = load_herb_csv_data(code)
