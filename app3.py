@@ -127,7 +127,7 @@ herb_df, ingre_data = load_initial_data()
 
 if herb_df is not None:
     st.header("1. 약재 선택 및 용량 입력")
-    herb_names = herb_df['약재명 (Korean Name)'].dropna().unique().tolist()
+    herb_names = herb_df['korean name'].dropna().unique().tolist()
     selected_herb_names = st.multiselect("분석할 약재를 선택하세요.", options=herb_names)
     
     selected_herbs_with_grams = {}
