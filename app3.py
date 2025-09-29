@@ -83,17 +83,19 @@ def run_network_analysis(selected_herbs_info, ingre_data):
         progress_bar.progress((i + 1) / len(smhb_codes))
 
     progress_bar.empty()
-
+    
     if not Target_DataFrames:
         st.error("선택된 약재에 대한 유효 데이터를 불러오지 못했습니다. 위 로그를 확인해주세요.")
         return None, None, None, None
-
+        
+    st.info(Target_DataFrames)
+    
     # --- ▼▼▼ 제공해주신 분석 코드의 '의도'를 CSV(DataFrame)에 맞게 구현 ▼▼▼ ---
     
     st.info("로드된 CSV 데이터를 파싱하여 Node와 Edge 목록을 생성합니다...")
     node_list = []
     edge_list = []
-    st.info("shape_ clear")
+    
     # Step 2: 각 약재의 DataFrame을 순회하며 node_list와 edge_list 생성
     # 이 부분이 CSV 형식에 맞춰 재구성된 핵심 파싱 로직입니다.
     for herb_df in Target_DataFrames:
