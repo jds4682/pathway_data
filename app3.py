@@ -9,7 +9,6 @@ import tempfile
 import rpy2.robjects as robjects
 from rpy2.robjects import pandas2ri
 from rpy2.robjects.packages import importr
-# ★★★ rpy2 버전 변경에 따른 수정 ★★★
 from rpy2.robjects import conversion
 
 # --- 1. 초기 설정 및 GitHub 데이터 로딩 함수 ---
@@ -51,8 +50,6 @@ def load_initial_data():
 
 # --- 2. GSEA 전처리 및 R 코드 실행 로직 (rpy2 수정) ---
 
-# --- 2. GSEA 전처리 및 R 코드 실행 로직 (rpy2 수정) ---
-
 def process_and_run_gsea_rpy2(prescription_name, selected_herbs_info, herb_weights):
     
     # Step 1: Python으로 GSEA 전처리 파일 생성
@@ -77,94 +74,75 @@ def process_and_run_gsea_rpy2(prescription_name, selected_herbs_info, herb_weigh
     # Step 2: R 코드 실행 준비
     st.info("R 분석 환경을 설정하고 데이터를 전달합니다...")
     try:
-        # --- ★★★ rpy2 버전 변경에 따른 수정 ★★★ ---
-        # with 구문을 사용하여 데이터 변환 컨텍스트를 관리합니다.
         with conversion.localconverter(robjects.default_converter + pandas2ri.converter):
             r_df = robjects.conversion.py2rpy(py_df)
-        # --- ★★★ 수정 끝 ★★★ ---
 
-
-        # R 코드를 Python의 여러 줄 문자열로 정의
+        # --- ★★★ R 코드 수정: 경로 설정 및 라이브러리 로드만 수행 ★★★ ---
         r_code = """
-        # 1. Docker 빌드 시 설치된 사용자 라이브러리 경로를 지정합니다.
-        #    이것이 빌드 단계와 실행 단계를 연결하는 핵심입니다.
-        user_lib <- Sys.getenv("R_LIBS_USER", unset = "/usr/local/lib/R/site-library")
-        .libPaths(user_lib)
+        # 1. Dockerfile에서 설정한 환경 변수로부터 라이브러리 경로를 가져옵니다.
+        lib_path <- Sys.getenv("R_LIBS_USER")
+        # 2. 이 경로를 라이브러리 검색 경로에 추가합니다.
+        .libPaths(c(lib_path, .libPaths()))
 
-        # 2. 라이브러리 로드 (설치는 Dockerfile에서 이미 완료됨)
+        # 3. 라이브러리를 로드합니다. (이제 패키지를 찾을 수 있습니다)
         suppressPackageStartupMessages(library(clusterProfiler))
         suppressPackageStartupMessages(library(org.Hs.eg.db))
         suppressPackageStartupMessages(library(enrichplot))
         suppressPackageStartupMessages(library(dplyr))
         suppressPackageStartupMessages(library(ggplot2))
 
-        # Python으로부터 R DataFrame과 출력 폴더 경로를 받는 함수 정의
+        # 4. 메인 분석 함수 (이전과 동일)
         run_gsea_in_r <- function(gene_data_df, output_dir) {
             
-            # --- 데이터 준비 ---
             aggregated_gene_data <- gene_data_df %>%
               group_by(GeneSymbol) %>%
               summarise(TotalScore = sum(Score, na.rm = TRUE)) %>%
               as.data.frame()
 
-            ids <- bitr(aggregated_gene_data$GeneSymbol, fromType="SYMBOL", toType="ENTREZID", OrgDb="org.Hs.eg.db", drop = FALSE)
-            
-            gene_data_merged <- merge(aggregated_gene_data, ids, by.x="GeneSymbol", by.y="SYMBOL", all.x = TRUE)
-            gene_data_final <- gene_data_merged %>% filter(!is.na(ENTREZID))
+            tryCatch({
+                ids <- bitr(aggregated_gene_data$GeneSymbol, fromType="SYMBOL", toType="ENTREZID", OrgDb="org.Hs.eg.db", drop = FALSE)
+                
+                gene_data_merged <- merge(aggregated_gene_data, ids, by.x="GeneSymbol", by.y="SYMBOL", all.x = TRUE)
+                gene_data_final <- gene_data_merged %>% filter(!is.na(ENTREZID))
+                
+                geneList <- gene_data_final$TotalScore
+                names(geneList) <- gene_data_final$ENTREZID
+                geneList <- sort(geneList, decreasing = TRUE)
+                geneList <- geneList[!duplicated(names(geneList))]
+                
+                if (length(geneList) == 0) {
+                    print("No valid genes left after ID conversion.")
+                    return()
+                }
 
-            geneList <- gene_data_final$TotalScore
-            names(geneList) <- gene_data_final$ENTREZID
-            geneList <- sort(geneList, decreasing = TRUE)
-            geneList <- geneList[!duplicated(names(geneList))]
+                # Run GSEA for GO
+                gse_go_results <- gseGO(geneList=geneList, OrgDb=org.Hs.eg.db, ont="BP", minGSSize=10, maxGSSize=500, pvalueCutoff=0.05, verbose=FALSE, scoreType="pos")
+                if (!is.null(gse_go_results) && nrow(as.data.frame(gse_go_results)) > 0) {
+                    p1 <- dotplot(gse_go_results, showCategory=15)
+                    ggsave(file.path(output_dir, "plot_go_dotplot.png"), plot = p1, width=10, height=8)
+                    p2 <- ridgeplot(gse_go_results, showCategory=15)
+                    ggsave(file.path(output_dir, "plot_go_ridgeplot.png"), plot = p2, width=10, height=8)
+                    p3 <- gseaplot2(gse_go_results, geneSetID = 1:min(3, nrow(as.data.frame(gse_go_results))))
+                    ggsave(file.path(output_dir, "plot_go_gseaplot.png"), plot = p3, width=10, height=8)
+                }
 
-            if (length(geneList) == 0) {
-              print("ID 변환 후 유효한 유전자가 없습니다.")
-              return(NULL)
-            }
-            
-            # --- GSEA 분석 실행 ---
-            print("GO 분석을 시작합니다.")
-            gse_go_results <- tryCatch({
-              gseGO(geneList=geneList, OrgDb=org.Hs.eg.db, ont="BP", minGSSize=10, maxGSSize=500, pvalueCutoff=0.05, verbose=FALSE, scoreType="pos")
-            }, error = function(e) { print("gseGO 분석 중 에러 발생."); return(NULL) })
-
-            print("KEGG 분석을 시작합니다.")
-            gse_kegg_results <- tryCatch({
-              gseKEGG(geneList=geneList, organism='hsa', minGSSize=10, maxGSSize=500, pvalueCutoff=0.05, verbose=FALSE, scoreType="pos")
-            }, error = function(e) { print("gseKEGG 분석 중 에러 발생."); return(NULL) })
-
-            # --- 결과 플롯 저장 ---
-            if (!is.null(gse_go_results) && nrow(as.data.frame(gse_go_results)) > 0) {
-              print("GO 결과 플롯을 저장합니다.")
-              go_df <- as.data.frame(gse_go_results)
-              num_results_go <- nrow(go_df)
-              
-              p1 <- dotplot(gse_go_results, showCategory = min(15, num_results_go))
-              ggsave(file.path(output_dir, "plot_go_dotplot.png"), plot = p1, width=10, height=8, dpi=150)
-              p2 <- ridgeplot(gse_go_results, showCategory = min(15, num_results_go))
-              ggsave(file.path(output_dir, "plot_go_ridgeplot.png"), plot = p2, width=10, height=8, dpi=150)
-              p3 <- gseaplot2(gse_go_results, geneSetID = 1:min(3, num_results_go))
-              ggsave(file.path(output_dir, "plot_go_gseaplot.png"), plot = p3, width=10, height=8, dpi=150)
-            }
-
-            if (!is.null(gse_kegg_results) && nrow(as.data.frame(gse_kegg_results)) > 0) {
-              print("KEGG 결과 플롯을 저장합니다.")
-              kegg_df <- as.data.frame(gse_kegg_results)
-              num_results_kegg <- nrow(kegg_df)
-              
-              p4 <- dotplot(gse_kegg_results, showCategory = min(15, num_results_kegg))
-              ggsave(file.path(output_dir, "plot_kegg_dotplot.png"), plot = p4, width=10, height=8, dpi=150)
-              p5 <- ridgeplot(gse_kegg_results, showCategory = min(15, num_results_kegg))
-              ggsave(file.path(output_dir, "plot_kegg_ridgeplot.png"), plot = p5, width=10, height=8, dpi=150)
-              p6 <- gseaplot2(gse_kegg_results, geneSetID = 1:min(3, num_results_kegg))
-              ggsave(file.path(output_dir, "plot_kegg_gseaplot.png"), plot = p6, width=10, height=8, dpi=150)
-            }
-            
-            return("분석 완료")
+                # Run GSEA for KEGG
+                gse_kegg_results <- gseKEGG(geneList=geneList, organism='hsa', minGSSize=10, maxGSSize=500, pvalueCutoff=0.05, verbose=FALSE, scoreType="pos")
+                if (!is.null(gse_kegg_results) && nrow(as.data.frame(gse_kegg_results)) > 0) {
+                    p4 <- dotplot(gse_kegg_results, showCategory=15)
+                    ggsave(file.path(output_dir, "plot_kegg_dotplot.png"), plot = p4, width=10, height=8)
+                    p5 <- ridgeplot(gse_kegg_results, showCategory=15)
+                    ggsave(file.path(output_dir, "plot_kegg_ridgeplot.png"), plot = p5, width=10, height=8)
+                    p6 <- gseaplot2(gse_kegg_results, geneSetID = 1:min(3, nrow(as.data.frame(gse_kegg_results))))
+                    ggsave(file.path(output_dir, "plot_kegg_gseaplot.png"), plot = p6, width=10, height=8)
+                }
+            }, error = function(e) {
+                print(paste("An error occurred during GSEA analysis:", e$message))
+            })
         }
         """
 
-       # Step 3: R 코드 실행
+        # Step 3: R 코드 실행
         st.info("Python 내에서 R 코드를 직접 실행하여 GSEA 분석을 시작합니다...")
         robjects.r(r_code)
         
@@ -183,11 +161,10 @@ def process_and_run_gsea_rpy2(prescription_name, selected_herbs_info, herb_weigh
             
     except Exception as e:
         st.error(f"rpy2를 이용한 R 코드 실행 중 오류가 발생했습니다: {e}")
-        st.info("컴퓨터에 R이 설치되어 있고, rpy2 라이브러리가 올바르게 설치되었는지 확인해주세요.")
         return None
 
 # --- 3. 웹페이지 UI 구성 ---
-st.title("🌿 GSEA 분석 자동화 웹 앱 (rpy2 통합)")
+st.title("🌿 GSEA 분석 자동화 웹 앱 (Docker & rpy2)")
 st.info("약재와 용량을 선택하면 Python 내에서 R 코드를 직접 실행하여 GSEA 분석을 수행합니다.")
 
 herb_df = load_initial_data()
@@ -224,7 +201,6 @@ if herb_df is not None:
             
             if st.button("GSEA 분석 시작", disabled=(not prescription_name_input)):
                 
-                # GSEA 분석 함수 실행 (rpy2 버전)
                 plots = process_and_run_gsea_rpy2(prescription_name_input, selected_herbs_info, herb_weights)
                 
                 if plots:
@@ -250,3 +226,4 @@ if herb_df is not None:
 
     except KeyError as e:
         st.error(f"'{e}' 열을 'all name.xlsx' 파일에서 찾을 수 없습니다. 코드의 열 이름을 확인하세요.")
+
