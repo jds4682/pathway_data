@@ -29,7 +29,7 @@ def load_excel_data(name):
 
 # ★★★ 개별 약재 데이터(CSV)를 GitHub에서 불러오는 함수 ★★★
 def load_herb_csv_data(smhb_code):
-    url = f"https://raw.githubusercontent.com/jds4682/pathway_data/main/tg/{smhb_code}.csv"
+    url = f"https://raw.githubusercontent.com/jds4682/pathway_data/main/{smhb_code}.csv"
     try:
         response = requests.get(url)
         if response.status_code == 200:
