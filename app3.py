@@ -51,6 +51,8 @@ def load_initial_data():
 
 # --- 2. GSEA 전처리 및 R 코드 실행 로직 (rpy2 수정) ---
 
+# --- 2. GSEA 전처리 및 R 코드 실행 로직 (rpy2 수정) ---
+
 def process_and_run_gsea_rpy2(prescription_name, selected_herbs_info, herb_weights):
     
     # Step 1: Python으로 GSEA 전처리 파일 생성
@@ -72,7 +74,8 @@ def process_and_run_gsea_rpy2(prescription_name, selected_herbs_info, herb_weigh
 
     py_df = pd.DataFrame(data_list, columns=['herb', 'GeneSymbol', 'Score'])
     
-  st.info("R 분석 환경을 설정하고 데이터를 전달합니다...")
+    # Step 2: R 코드 실행 준비
+    st.info("R 분석 환경을 설정하고 데이터를 전달합니다...")
     try:
         # --- ★★★ rpy2 버전 변경에 따른 수정 ★★★ ---
         # with 구문을 사용하여 데이터 변환 컨텍스트를 관리합니다.
