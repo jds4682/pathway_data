@@ -9,6 +9,8 @@ import tempfile
 import rpy2.robjects as robjects
 from rpy2.robjects import pandas2ri
 from rpy2.robjects.packages import importr
+# ★★★ rpy2 버전 변경에 따른 수정 ★★★
+from rpy2.robjects import conversion
 
 # --- 1. 초기 설정 및 GitHub 데이터 로딩 함수 ---
 
@@ -47,11 +49,11 @@ def load_initial_data():
     herb_df = load_excel_data('all name.xlsx')
     return herb_df
 
-# --- 2. GSEA 전처리 및 R 코드 실행 로직 (rpy2 사용) ---
+# --- 2. GSEA 전처리 및 R 코드 실행 로직 (rpy2 수정) ---
 
 def process_and_run_gsea_rpy2(prescription_name, selected_herbs_info, herb_weights):
     
-    # Step 1: Python으로 GSEA 전처리 파일 생성 (메모리 내에서)
+    # Step 1: Python으로 GSEA 전처리 파일 생성
     st.info("Python으로 GSEA 전처리 데이터를 생성합니다...")
     data_list = []
     for herb_name, herb_code in selected_herbs_info.items():
@@ -70,13 +72,12 @@ def process_and_run_gsea_rpy2(prescription_name, selected_herbs_info, herb_weigh
 
     py_df = pd.DataFrame(data_list, columns=['herb', 'GeneSymbol', 'Score'])
     
-    # Step 2: R 코드 실행 준비
-    st.info("R 분석 환경을 설정하고 데이터를 전달합니다...")
-    try:
-        # Pandas DataFrame을 R DataFrame으로 변환 활성화
-        pandas2ri.activate()
-        # Python DataFrame -> R DataFrame으로 변환
-        r_df = pandas2ri.py2rpy(py_df)
+      try:
+        # --- ★★★ rpy2 버전 변경에 따른 수정 ★★★ ---
+        # with 구문을 사용하여 데이터 변환 컨텍스트를 관리합니다.
+        with conversion.localconverter(robjects.default_converter + pandas2ri.converter):
+            r_df = robjects.conversion.py2rpy(py_df)
+        # --- ★★★ 수정 끝 ★★★ ---
 
         # R 코드를 Python의 여러 줄 문자열로 정의
         r_code = """
@@ -152,18 +153,14 @@ def process_and_run_gsea_rpy2(prescription_name, selected_herbs_info, herb_weigh
         }
         """
 
-        # Step 3: R 코드 실행
+       # Step 3: R 코드 실행
         st.info("Python 내에서 R 코드를 직접 실행하여 GSEA 분석을 시작합니다...")
-        # R 코드를 R 환경에 정의
         robjects.r(r_code)
         
-        # 임시 폴더를 만들어 결과 이미지 저장
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Python에서 R 함수 호출
             robjects.r['run_gsea_in_r'](r_df, temp_dir)
             st.success("GSEA 분석이 성공적으로 완료되었습니다!")
 
-            # 생성된 이미지 파일들을 읽어와 반환
             plots = {}
             plot_files = ["plot_go_dotplot.png", "plot_go_ridgeplot.png", "plot_go_gseaplot.png", 
                           "plot_kegg_dotplot.png", "plot_kegg_ridgeplot.png", "plot_kegg_gseaplot.png"]
