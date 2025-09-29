@@ -1,5 +1,5 @@
 # 1. 베이스 이미지 설정 (Python 3.9 환경에서 시작)
-FROM python:3.9-slim
+FROM python:3.9
 
 # 2. 작업 디렉토리 설정
 WORKDIR /app
