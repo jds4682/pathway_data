@@ -6,15 +6,20 @@ WORKDIR /app
 
 # 3. 시스템 패키지 설치 (R 및 데이터 과학용 필수 라이브러리)
 # ★★★ R 패키지 컴파일에 필요한 라이브러리들을 대거 추가하여 안정성 확보 ★★★
+# g++, make, libsqlite3-dev 등 R 패키지 빌드에 필수적인 시스템 도구 추가
 RUN apt-get update && apt-get install -y --no-install-recommends \
     r-base \
     r-base-dev \
+    g++ \
+    make \
     libcurl4-openssl-dev \
     libssl-dev \
     libxml2-dev \
     libcairo2-dev \
     libxt-dev \
     libfontconfig1-dev \
+    libsqlite3-dev \
+    unixodbc-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # 4. R 라이브러리 경로를 영구적인 환경 변수로 설정
