@@ -1,10 +1,5 @@
-networkx==2.6.3
-plotly==5.3.1
-openpyxl
-streamlit_plotly_events
-kaleido==0.2.1
-matplotlib
+streamlit
 pandas
-numpy
-statsmodels
-tqdm
+openpyxl
+requests
+rpy2
