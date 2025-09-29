@@ -29,17 +29,17 @@ def load_excel_data(name):
         return None
 
 @st.cache_data
-def load_herb_json_data(smhb_code):
-    url = f"https://raw.githubusercontent.com/jds4682/pathway_data/main/{smhb_code}.json"
+def load_herb_csv_data(smhb_code):
+    url = f"https://raw.githubusercontent.com/jds4682/pathway_data/main/{smhb_code}.csv"
     try:
         response = requests.get(url)
         if response.status_code == 200:
-            return response.json()
+            return pd.read_csv(BytesIO(response.content))
         else:
-            st.warning(f"GitHub에서 '{smhb_code}.json' 파일을 찾을 수 없습니다.")
+            st.warning(f"GitHub에서 '{smhb_code}.csv' 파일을 찾을 수 없습니다.")
             return None
     except requests.exceptions.RequestException:
-        st.warning(f"'{smhb_code}.json' 파일 로딩 중 네트워크 오류 발생.")
+        st.warning(f"'{smhb_code}.csv' 파일 로딩 중 네트워크 오류 발생.")
         return None
 
 @st.cache_data
@@ -60,7 +60,7 @@ def run_network_analysis(selected_herbs_info, ingre_data):
     progress_bar = st.progress(0, text="약재 데이터를 GitHub에서 로딩 중입니다...")
     smhb_codes = list(selected_herbs_info.values())
     for i, code in enumerate(smhb_codes):
-        herb_data = load_herb_json_data(code)
+        herb_data = load_herb_csv_data(code)
         if herb_data:
             Target.append(herb_data)
         progress_bar.progress((i + 1) / len(smhb_codes))
