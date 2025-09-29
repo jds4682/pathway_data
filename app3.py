@@ -156,7 +156,7 @@ def run_network_analysis(selected_herbs_info, ingre_data):
             if node_data.iloc[i]['Label'] not in  list(ingre_data['Molecule_name']) :
                 drop_list.append(i)
 
-    
+    st.info("OB_Score_ clear")
     # 1단계: 모든 파일에서 p-value 수집하기
     all_p_values_data = []
     print("1/3: 모든 파일에서 P-value 수집 중...")
