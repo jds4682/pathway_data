@@ -5,11 +5,162 @@ from io import BytesIO
 import os
 import tempfile
 
-# rpy2 관련 라이브러리 임포트
-import rpy2.robjects as robjects
-from rpy2.robjects import pandas2ri
-from rpy2.robjects.packages import importr
-from rpy2.robjects import conversion
+import gseapy as gp
+import mygene
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import tempfile
+import os
+
+# --- 대체할 함수: R 대신 gseapy 사용 ---
+def process_and_run_gsea_gseapy(prescription_name, selected_herbs_info, herb_weights):
+    # Step 1: 기존과 동일한 전처리 -> py_df 생성
+    data_list = []
+    for herb_name, herb_code in selected_herbs_info.items():
+        df = load_herb_csv_data(herb_code)
+        if df is None or df.empty:
+            continue
+        df = df[pd.to_numeric(df['P_value'], errors='coerce').notna()]
+        df = df[pd.to_numeric(df['Value'], errors='coerce').notna()]
+        weight = herb_weights.get(herb_name, 1.0)
+        for _, row in df.iterrows():
+            data_list.append([herb_code, row['Gene symbol'], float(row['Value']) * weight])
+
+    if not data_list:
+        st.error("처리할 데이터가 없습니다.")
+        return None
+
+    py_df = pd.DataFrame(data_list, columns=['herb', 'GeneSymbol', 'Score'])
+
+    # aggregate by GeneSymbol (like clusterProfiler step)
+    agg = py_df.groupby('GeneSymbol', as_index=False).agg({'Score': 'sum'})
+    agg = agg.dropna(subset=['GeneSymbol'])
+    if agg.empty:
+        st.error("유효한 유전자 데이터가 없습니다.")
+        return None
+
+    # Step 2: SYMBOL -> ENTREZID 매핑 (mygene 사용)
+    mg = mygene.MyGeneInfo()
+    symbols = agg['GeneSymbol'].astype(str).tolist()
+    try:
+        mapping = mg.querymany(symbols, scopes='symbol', fields='entrezgene', species='human', as_dataframe=True)
+    except Exception as e:
+        st.warning(f"Gene ID 매핑 중 오류 발생 (mygene): {e}. SYMBOL 기반으로 진행합니다.")
+        mapping = None
+
+    if isinstance(mapping, pd.DataFrame) and 'entrezgene' in mapping.columns:
+        # querymany returns index = query symbol; ensure alignment
+        mapping = mapping.reset_index().rename(columns={'index': 'query'})
+        mapping = mapping[['query', 'entrezgene']].drop_duplicates(subset=['query'])
+        merged = pd.merge(agg, mapping, left_on='GeneSymbol', right_on='query', how='left')
+        # prefer entrez for ranking if available, else keep SYMBOL
+        merged['gene_id_for_gsea'] = merged['entrezgene'].fillna(merged['GeneSymbol'])
+    else:
+        merged = agg.copy()
+        merged['gene_id_for_gsea'] = merged['GeneSymbol']
+
+    # create preranked list: Series index = gene name (entrez or symbol), value = Score
+    # gseapy expects a file or pd.Series with gene_name and rank
+    ranked = merged[['gene_id_for_gsea', 'Score']].copy()
+    ranked = ranked.dropna(subset=['gene_id_for_gsea'])
+    # convert entrez floats to str, keep unique by taking sum if duplicates
+    ranked['gene_id_for_gsea'] = ranked['gene_id_for_gsea'].astype(str)
+    ranked = ranked.groupby('gene_id_for_gsea', as_index=False).agg({'Score': 'sum'})
+    ranked = ranked.sort_values(by='Score', ascending=False)
+
+    # prepare temp dir to save plots
+    with tempfile.TemporaryDirectory() as tmpdir:
+        out_plots = {}
+
+        # 1) GSEA for GO (using Enrichr library name for GO BP)
+        try:
+            pre_res_go = gp.prerank(rnk=ranked, gene_sets='GO_Biological_Process_2021',
+                                    processes=4, permutation_num=1000, outdir=tmpdir,
+                                    format='png', seed=123)
+            # pre_res_go.res2d is the results DataFrame
+            res_go = pre_res_go.res2d
+            if res_go is not None and not res_go.empty:
+                # save a dotplot-like figure: NES vs -log10(fdr)
+                df_top = res_go.reset_index().head(15)
+                df_top['neglog10fdr'] = -np.log10(df_top['fdr_q-val'].replace(0, np.nextafter(0,1)))
+                plt.figure(figsize=(10,6))
+                sizes = (df_top['geneset_size'] if 'geneset_size' in df_top.columns else df_top['geneset_size']).astype(float)
+                plt.scatter(df_top['NES'], df_top['neglog10fdr'], s=(sizes/np.max(sizes))*300 + 20)
+                for i, txt in enumerate(df_top.index):
+                    plt.text(df_top['NES'].iloc[i], df_top['neglog10fdr'].iloc[i], df_top['Term'].iloc[i], fontsize=8)
+                plt.xlabel('NES')
+                plt.ylabel('-log10(FDR)')
+                plt.title('GO (BP) top terms')
+                go_dot = os.path.join(tmpdir, 'plot_go_dotplot.png')
+                plt.tight_layout()
+                plt.savefig(go_dot, dpi=150)
+                plt.close()
+                out_plots['plot_go_dotplot.png'] = go_dot
+
+                # GSEA plot for top 1 (if available) using gseapy's gseaplot
+                try:
+                    top_term = res_go.index[0]
+                    gp.plot.gseaplot(pre_res_go.ranking, pre_res_go.results[top_term], ofname=os.path.join(tmpdir, 'plot_go_gseaplot.png'))
+                    out_plots['plot_go_gseaplot.png'] = os.path.join(tmpdir, 'plot_go_gseaplot.png')
+                except Exception:
+                    pass
+        except Exception as e:
+            st.warning(f"GO GSEA 수행 중 오류: {e}")
+
+        # 2) GSEA for KEGG
+        try:
+            pre_res_kegg = gp.prerank(rnk=ranked, gene_sets='KEGG_2019_Human',
+                                       processes=4, permutation_num=1000, outdir=tmpdir,
+                                       format='png', seed=123)
+            res_kegg = pre_res_kegg.res2d
+            if res_kegg is not None and not res_kegg.empty:
+                df_top = res_kegg.reset_index().head(15)
+                df_top['neglog10fdr'] = -np.log10(df_top['fdr_q-val'].replace(0, np.nextafter(0,1)))
+                plt.figure(figsize=(10,6))
+                sizes = (df_top['geneset_size'] if 'geneset_size' in df_top.columns else df_top['geneset_size']).astype(float)
+                plt.scatter(df_top['NES'], df_top['neglog10fdr'], s=(sizes/np.max(sizes))*300 + 20)
+                for i, txt in enumerate(df_top.index):
+                    plt.text(df_top['NES'].iloc[i], df_top['neglog10fdr'].iloc[i], df_top['Term'].iloc[i], fontsize=8)
+                plt.xlabel('NES')
+                plt.ylabel('-log10(FDR)')
+                plt.title('KEGG top terms')
+                kegg_dot = os.path.join(tmpdir, 'plot_kegg_dotplot.png')
+                plt.tight_layout()
+                plt.savefig(kegg_dot, dpi=150)
+                plt.close()
+                out_plots['plot_kegg_dotplot.png'] = kegg_dot
+
+                # GSEA plot for top 1 (if available)
+                try:
+                    top_term = res_kegg.index[0]
+                    gp.plot.gseaplot(pre_res_kegg.ranking, pre_res_kegg.results[top_term], ofname=os.path.join(tmpdir, 'plot_kegg_gseaplot.png'))
+                    out_plots['plot_kegg_gseaplot.png'] = os.path.join(tmpdir, 'plot_kegg_gseaplot.png')
+                except Exception:
+                    pass
+        except Exception as e:
+            st.warning(f"KEGG GSEA 수행 중 오류: {e}")
+
+        # 3) Return paths (copy to a persistent place if needed)
+        # Since tmpdir will be removed on exit, copy to a new temp folder under /tmp and return paths
+        persistent_dir = tempfile.mkdtemp(prefix='gsea_out_')
+        final_plots = {}
+        for name, path in out_plots.items():
+            if os.path.exists(path):
+                dest = os.path.join(persistent_dir, name)
+                try:
+                    from shutil import copyfile
+                    copyfile(path, dest)
+                    final_plots[name] = dest
+                except Exception:
+                    pass
+
+        if final_plots:
+            st.success("GSEA 분석(파이썬 기반)이 완료되었습니다.")
+            return final_plots
+        else:
+            st.error("분석은 완료되었으나 저장된 플롯이 없습니다.")
+            return None
 
 # --- 1. 초기 설정 및 GitHub 데이터 로딩 함수 ---
 
@@ -50,118 +201,7 @@ def load_initial_data():
 
 # --- 2. GSEA 전처리 및 R 코드 실행 로직 (rpy2 수정) ---
 
-def process_and_run_gsea_rpy2(prescription_name, selected_herbs_info, herb_weights):
-    
-    # Step 1: Python으로 GSEA 전처리 파일 생성
-    st.info("Python으로 GSEA 전처리 데이터를 생성합니다...")
-    data_list = []
-    for herb_name, herb_code in selected_herbs_info.items():
-        df = load_herb_csv_data(herb_code)
-        if df is None or df.empty:
-            continue
-        df = df[pd.to_numeric(df['P_value'], errors='coerce').notna()]
-        df = df[pd.to_numeric(df['Value'], errors='coerce').notna()]
-        weight = herb_weights.get(herb_name, 1.0)
-        for _, row in df.iterrows():
-            data_list.append([herb_code, row['Gene symbol'], float(row['Value']) * weight])
-    
-    if not data_list:
-        st.error("처리할 데이터가 없습니다.")
-        return None
 
-    py_df = pd.DataFrame(data_list, columns=['herb', 'GeneSymbol', 'Score'])
-    
-    # Step 2: R 코드 실행 준비
-    st.info("R 분석 환경을 설정하고 데이터를 전달합니다...")
-    try:
-        with conversion.localconverter(robjects.default_converter + pandas2ri.converter):
-            r_df = robjects.conversion.py2rpy(py_df)
-
-        # --- ★★★ R 코드 수정: 경로 설정 및 라이브러리 로드만 수행 ★★★ ---
-        r_code = """
-        # 1. Dockerfile에서 설정한 환경 변수로부터 라이브러리 경로를 가져옵니다.
-        lib_path <- Sys.getenv("R_LIBS_USER")
-        # 2. 이 경로를 라이브러리 검색 경로에 추가합니다.
-        .libPaths(c(lib_path, .libPaths()))
-
-        # 3. 라이브러리를 로드합니다. (이제 패키지를 찾을 수 있습니다)
-        suppressPackageStartupMessages(library(clusterProfiler))
-        suppressPackageStartupMessages(library(org.Hs.eg.db))
-        suppressPackageStartupMessages(library(enrichplot))
-        suppressPackageStartupMessages(library(dplyr))
-        suppressPackageStartupMessages(library(ggplot2))
-
-        # 4. 메인 분석 함수 (이전과 동일)
-        run_gsea_in_r <- function(gene_data_df, output_dir) {
-            
-            aggregated_gene_data <- gene_data_df %>%
-              group_by(GeneSymbol) %>%
-              summarise(TotalScore = sum(Score, na.rm = TRUE)) %>%
-              as.data.frame()
-
-            tryCatch({
-                ids <- bitr(aggregated_gene_data$GeneSymbol, fromType="SYMBOL", toType="ENTREZID", OrgDb="org.Hs.eg.db", drop = FALSE)
-                
-                gene_data_merged <- merge(aggregated_gene_data, ids, by.x="GeneSymbol", by.y="SYMBOL", all.x = TRUE)
-                gene_data_final <- gene_data_merged %>% filter(!is.na(ENTREZID))
-                
-                geneList <- gene_data_final$TotalScore
-                names(geneList) <- gene_data_final$ENTREZID
-                geneList <- sort(geneList, decreasing = TRUE)
-                geneList <- geneList[!duplicated(names(geneList))]
-                
-                if (length(geneList) == 0) {
-                    print("No valid genes left after ID conversion.")
-                    return()
-                }
-
-                # Run GSEA for GO
-                gse_go_results <- gseGO(geneList=geneList, OrgDb=org.Hs.eg.db, ont="BP", minGSSize=10, maxGSSize=500, pvalueCutoff=0.05, verbose=FALSE, scoreType="pos")
-                if (!is.null(gse_go_results) && nrow(as.data.frame(gse_go_results)) > 0) {
-                    p1 <- dotplot(gse_go_results, showCategory=15)
-                    ggsave(file.path(output_dir, "plot_go_dotplot.png"), plot = p1, width=10, height=8)
-                    p2 <- ridgeplot(gse_go_results, showCategory=15)
-                    ggsave(file.path(output_dir, "plot_go_ridgeplot.png"), plot = p2, width=10, height=8)
-                    p3 <- gseaplot2(gse_go_results, geneSetID = 1:min(3, nrow(as.data.frame(gse_go_results))))
-                    ggsave(file.path(output_dir, "plot_go_gseaplot.png"), plot = p3, width=10, height=8)
-                }
-
-                # Run GSEA for KEGG
-                gse_kegg_results <- gseKEGG(geneList=geneList, organism='hsa', minGSSize=10, maxGSSize=500, pvalueCutoff=0.05, verbose=FALSE, scoreType="pos")
-                if (!is.null(gse_kegg_results) && nrow(as.data.frame(gse_kegg_results)) > 0) {
-                    p4 <- dotplot(gse_kegg_results, showCategory=15)
-                    ggsave(file.path(output_dir, "plot_kegg_dotplot.png"), plot = p4, width=10, height=8)
-                    p5 <- ridgeplot(gse_kegg_results, showCategory=15)
-                    ggsave(file.path(output_dir, "plot_kegg_ridgeplot.png"), plot = p5, width=10, height=8)
-                    p6 <- gseaplot2(gse_kegg_results, geneSetID = 1:min(3, nrow(as.data.frame(gse_kegg_results))))
-                    ggsave(file.path(output_dir, "plot_kegg_gseaplot.png"), plot = p6, width=10, height=8)
-                }
-            }, error = function(e) {
-                print(paste("An error occurred during GSEA analysis:", e$message))
-            })
-        }
-        """
-
-        # Step 3: R 코드 실행
-        st.info("Python 내에서 R 코드를 직접 실행하여 GSEA 분석을 시작합니다...")
-        robjects.r(r_code)
-        
-        with tempfile.TemporaryDirectory() as temp_dir:
-            robjects.r['run_gsea_in_r'](r_df, temp_dir)
-            st.success("GSEA 분석이 성공적으로 완료되었습니다!")
-
-            plots = {}
-            plot_files = ["plot_go_dotplot.png", "plot_go_ridgeplot.png", "plot_go_gseaplot.png", 
-                          "plot_kegg_dotplot.png", "plot_kegg_ridgeplot.png", "plot_kegg_gseaplot.png"]
-            for plot_name in plot_files:
-                plot_path = os.path.join(temp_dir, plot_name)
-                if os.path.exists(plot_path):
-                    plots[plot_name] = plot_path
-            return plots
-            
-    except Exception as e:
-        st.error(f"rpy2를 이용한 R 코드 실행 중 오류가 발생했습니다: {e}")
-        return None
 
 # --- 3. 웹페이지 UI 구성 ---
 st.title("🌿 GSEA 분석 자동화 웹 앱 (Docker & rpy2)")
@@ -201,7 +241,7 @@ if herb_df is not None:
             
             if st.button("GSEA 분석 시작", disabled=(not prescription_name_input)):
                 
-                plots = process_and_run_gsea_rpy2(prescription_name_input, selected_herbs_info, herb_weights)
+                plots = process_and_run_gsea_gseapy(prescription_name_input, selected_herbs_info, herb_weights)
                 
                 if plots:
                     st.header(f"📈 '{prescription_name_input}' GSEA 분석 결과")
