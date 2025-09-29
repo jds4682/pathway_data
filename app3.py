@@ -102,7 +102,7 @@ def run_network_analysis(selected_herbs_info, ingre_data):
                 node_list.append(herb_df[i]['data']['info'].split("<br>"))
             if herb_df[i]['group'] == 'edges' :
                 edge_list.append([herb_df[i]['data']['source'],  herb_df[i]['data']['target']])
-
+    st.info("shape_ clear")
     # Step 3: 이하 제공해주신 코드 로직을 기반으로 데이터 가공 및 분석 수행
     # data shaping
     node_data = pd.DataFrame()
