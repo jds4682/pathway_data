@@ -86,13 +86,17 @@ def process_and_run_gsea_rpy2(prescription_name, selected_herbs_info, herb_weigh
 
         # R 코드를 Python의 여러 줄 문자열로 정의
         r_code = """
-        
-        #라이브러리로드
-        library(clusterProfiler)
-        library(org.Hs.eg.db)
-        library(enrichplot)
-        library(dplyr)
-        library(ggplot2)
+        # 1. Docker 빌드 시 설치된 사용자 라이브러리 경로를 지정합니다.
+        #    이것이 빌드 단계와 실행 단계를 연결하는 핵심입니다.
+        user_lib <- Sys.getenv("R_LIBS_USER", unset = "/usr/local/lib/R/site-library")
+        .libPaths(user_lib)
+
+        # 2. 라이브러리 로드 (설치는 Dockerfile에서 이미 완료됨)
+        suppressPackageStartupMessages(library(clusterProfiler))
+        suppressPackageStartupMessages(library(org.Hs.eg.db))
+        suppressPackageStartupMessages(library(enrichplot))
+        suppressPackageStartupMessages(library(dplyr))
+        suppressPackageStartupMessages(library(ggplot2))
 
         # Python으로부터 R DataFrame과 출력 폴더 경로를 받는 함수 정의
         run_gsea_in_r <- function(gene_data_df, output_dir) {
