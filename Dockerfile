@@ -5,28 +5,29 @@ FROM python:3.9-slim
 WORKDIR /app
 
 # 3. 시스템 패키지 설치 (R, libcurl 등 packages.txt의 역할)
-# noninteractive 설정을 통해 설치 중 묻는 질문에 자동으로 'yes'로 답함
 RUN apt-get update && apt-get install -y \
     r-base \
     r-base-dev \
     libcurl4-openssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# 4. Python 라이브러리 설치
-# requirements.txt 파일을 먼저 복사하여, 이 파일이 변경될 때만 라이브러리를 다시 설치하도록 함 (캐싱 효율)
+# --- ★★★ 수정된 부분 ★★★ ---
+# 4. R 라이브러리 경로를 영구적인 환경 변수로 설정
+# 이 환경 변수는 install_packages.R과 app.py의 R 세션 모두에서 사용됩니다.
+ENV R_LIBS_USER=/usr/local/lib/R/site-library
+
+# 5. Python 라이브러리 설치
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 5. R 라이브러리 설치용 스크립트 복사 및 실행
-# 이 단계에서 시간이 가장 오래 걸리지만, 배포 시 단 한 번만 실행됨
+# 6. R 라이브러리 설치용 스크립트 복사 및 실행
 COPY install_packages.R ./
 RUN Rscript install_packages.R
 
-# 6. 나머지 앱 소스 코드 전체 복사
+# 7. 나머지 앱 소스 코드 전체 복사
 COPY . .
 
-# 7. 앱 실행 명령어
-# EXPOSE: 8501 포트를 외부에 노출
-# CMD: 컨테이너가 시작될 때 실행할 명령어
+# 8. 앱 실행 명령어
 EXPOSE 8501
-CMD ["streamlit", "run", "app3.py"]
+# CMD 명령어의 파일 이름을 'app.py'로 수정
+CMD ["streamlit", "run", "app.py"]
