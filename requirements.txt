@@ -1,6 +1,8 @@
 streamlit
 pandas
-openpyxl
 requests
-rpy2
-# Rebuild trigger 1.0
+gseapy
+mygene
+matplotlib
+openpyxl      # 엑셀 읽기용
+numpy
