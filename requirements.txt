@@ -1,5 +1,2 @@
-streamlit
-pandas
-openpyxl
-requests
-rpy2
+r-base
+r-base-dev
