@@ -50,19 +50,39 @@ def load_initial_data():
     ingre_data = ingre_data.dropna(subset=['OB_score'], how='any', axis=0)
     return herb_df, ingre_data
 
-# --- 2. 네트워크 분석 핵심 로직 (사용자 코드 통합) ---
 def run_network_analysis(selected_herbs_info, ingre_data):
     
-    # --- ★ Step 1: 사용자가 선택한 약재 데이터를 GitHub에서 로딩 ---
     t_name = "_".join(selected_herbs_info.keys())
-    Target = [t_name] # 처방 이름
+    Target = [t_name]
     
     progress_bar = st.progress(0, text="약재 데이터를 GitHub에서 로딩 중입니다...")
     smhb_codes = list(selected_herbs_info.values())
+    
     for i, code in enumerate(smhb_codes):
-        herb_data = load_herb_csv_data(code)
-        if herb_data:
-            Target.append(herb_data)
+        herb_df_single = load_herb_csv_data(code)
+        
+        # --- ★★★ 오류 수정 부분 ★★★ ---
+        # if herb_data: -> if herb_df_single is not None and not herb_df_single.empty:
+        if herb_df_single is not None and not herb_df_single.empty:
+            # CSV를 JSON 유사 구조(딕셔너리 리스트)로 변환
+            herb_json_structure = []
+            for _, row in herb_df_single.iterrows():
+                group = row.get('group')
+                if group == 'nodes':
+                    herb_json_structure.append({
+                        'group': 'nodes',
+                        'data': {'info': row.get('info')}
+                    })
+                elif group == 'edges':
+                    herb_json_structure.append({
+                        'group': 'edges',
+                        'data': {
+                            'source': row.get('source'),
+                            'target': row.get('target')
+                        }
+                    })
+            Target.append(herb_json_structure)
+        
         progress_bar.progress((i + 1) / len(smhb_codes))
     progress_bar.empty()
 
