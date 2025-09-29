@@ -40,15 +40,18 @@ def load_initial_data():
     herb_df = load_excel_data('all name.xlsx')
     return herb_df
 
-# --- 2. GSEA 전처리 핵심 로직 ---
-
 def process_for_gsea(prescription_name, selected_herbs_info, herb_weights):
+    
     data_list = []
+    
     progress_bar = st.progress(0, text="약재 데이터를 GitHub에서 로딩 및 처리 중입니다...")
     
-    smhb_codes = list(selected_herbs_info.values())
+    # selected_herbs_info는 {'한글약재명': 'SMHB코드'} 형태의 딕셔너리
+    # herb_weights는 {'한글약재명': 그람수} 형태의 딕셔너리
     
+    # --- ▼▼▼ 제공해주신 분석 코드의 의도를 반영한 로직 ▼▼▼ ---
     for i, (herb_name, herb_code) in enumerate(selected_herbs_info.items()):
+        
         df = load_herb_csv_data(herb_code)
         
         if df is None or df.empty:
@@ -64,9 +67,12 @@ def process_for_gsea(prescription_name, selected_herbs_info, herb_weights):
             gene = row['Gene symbol']
             value = float(row['Value'])
             score = value * weight
-            data_list.append([herb_name, gene, score])
             
-        progress_bar.progress((i + 1) / len(smhb_codes))
+            # --- ★★★ 수정된 부분: herb_name -> herb_code ★★★ ---
+            # 최종 리스트에 한글 약재명 대신 SMHB 코드를 저장합니다.
+            data_list.append([herb_code, gene, score])
+            
+        progress_bar.progress((i + 1) / len(selected_herbs_info))
     
     progress_bar.empty()
     
@@ -74,7 +80,10 @@ def process_for_gsea(prescription_name, selected_herbs_info, herb_weights):
         st.error("처리할 데이터가 없습니다.")
         return None
 
-    output_df = pd.DataFrame(data_list, columns=['Herb', 'GeneSymbol', 'Score'])
+    # --- ★★★ 수정된 부분: 컬럼 이름을 'Herb' -> 'Herb_ID'로 변경 (선택사항) ★★★ ---
+    # 첫 번째 열의 내용이 ID임을 명확히 하기 위해 컬럼 이름을 변경합니다.
+    output_df = pd.DataFrame(data_list, columns=['herb', 'GeneSymbol', 'Score'])
+
     return output_df
 
 # --- 3. 웹페이지 UI 구성 ---
