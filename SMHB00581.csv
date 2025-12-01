@@ -1,4 +1,4 @@
-﻿Target id,Gene symbol,Chromosome,Gene name,Protein name,Ensembl id,UniProt id,P_value,FDR(BH),FDR(Bonferroni),Relationship,Inferred evidence score
+﻿Target id,Gene symbol,Chromosome,Gene name,Protein name,Ensembl id,UniProt id,P_value,FDR(BH),FDR(Bonferroni),Relationship,Value
 "SMTT00341","BAD","None","BCL2 associated agonist of cell death","Bcl2-associated Agonist Of Cell Death","ENSG00000002330","Q92934","0.00483352","0.0354867","1.0","By_ingredient","0.4268"
 "SMTT00361","BCL2","18","BCL2, Apoptosis Regulator","Apoptosis Regulator Bcl-2","ENSG00000171791","P10415","0.0256872","0.0673619","1.0","By_ingredient","0.7953"
 "SMTT00576","CDKL5","X","Cyclin Dependent Kinase Like 5","None","ENSG00000008086","None","0.00522073","0.0368716","1.0","By_ingredient","0.2495"
