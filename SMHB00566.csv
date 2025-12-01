@@ -1,4 +1,4 @@
-﻿Target id,Gene symbol,Chromosome,Gene name,Protein name,Ensembl id,UniProt id,P_value,FDR(BH),FDR(Bonferroni),Relationship,Inferred evidence score
+﻿Target id,Gene symbol,Chromosome,Gene name,Protein name,Ensembl id,UniProt id,P_value,FDR(BH),FDR(Bonferroni),Relationship,Value
 "SMTT00006","AANAT","None","aralkylamine N-acetyltransferase","Serotonin N-acetyltransferase","ENSG00000129673","Q16613","0.00448309","0.0346571","1.0","By_ingredient","0.2239"
 "SMTT00049","ACE","17","Angiotensin I Converting Enzyme","Angiotensin-converting Enzyme","ENSG00000159640","P12821","0.00845249","0.0444644","1.0","By_ingredient","0.2209"
 "SMTT00050","ACE2","None","angiotensin I converting enzyme 2","Angiotensin-converting Enzyme 2","ENSG00000130234","Q9BYF1","0.00398589","0.032859","1.0","By_ingredient","0.2225"
